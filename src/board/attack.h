@@ -1,5 +1,8 @@
 #pragma once
 #include <cstdint>
+#include <array>
+#include "bitboard.h"
+#include "magic.h"
 
 /**
  * @file attack.h
@@ -16,15 +19,7 @@
  *  - Geração de lances legais
  *  - Avaliação posicional (controle de casas)
  *  - Verificação de segurança do rei
- *
- * Esta abordagem é padrão em engines competitivas.
  */
-
-constexpr uint64_t BB(int sq) { return 1ULL << sq; }
-
-constexpr bool onBoard(int r, int f) {
-    return r >= 0 && r < 8 && f >= 0 && f < 8;
-}
 
 /* ============================================================
                            PEÃO
@@ -172,3 +167,124 @@ constexpr uint64_t KING_ATTACKS[64] = {
     kingAttackFor(60), kingAttackFor(61), kingAttackFor(62), kingAttackFor(63)
 };
 
+// Aqui já entram magic bitboards
+
+/* ============================================================
+                           BISPO
+   ============================================================ */
+
+constexpr uint64_t bishopMaskFor(int sq) {
+    uint64_t mask = 0;
+    int r = sq / 8;
+    int f = sq % 8;
+
+    // NE
+    for (int rr = r + 1, ff = f + 1; rr < 7 && ff < 7; ++rr, ++ff)
+        mask |= BB(rr * 8 + ff);
+    // NW
+    for (int rr = r + 1, ff = f - 1; rr < 7 && ff > 0; ++rr, --ff)
+        mask |= BB(rr * 8 + ff);
+    // SE
+    for (int rr = r - 1, ff = f + 1; rr > 0 && ff < 7; --rr, ++ff)
+        mask |= BB(rr * 8 + ff);
+    // SW
+    for (int rr = r - 1, ff = f - 1; rr > 0 && ff > 0; --rr, --ff)
+        mask |= BB(rr * 8 + ff);
+
+    return mask;
+}
+
+constexpr uint64_t bishopAttacksFor(int sq, uint64_t blockers) {
+    uint64_t attacks = 0;
+    int r = sq / 8;
+    int f = sq % 8;
+
+    // NE
+    for (int rr = r + 1, ff = f + 1; rr < 8 && ff < 8; ++rr, ++ff) {
+        int s = rr * 8 + ff;
+        attacks |= BB(s);
+        if (blockers & BB(s)) break;
+    }
+    // NW
+    for (int rr = r + 1, ff = f - 1; rr < 8 && ff >= 0; ++rr, --ff) {
+        int s = rr * 8 + ff;
+        attacks |= BB(s);
+        if (blockers & BB(s)) break;
+    }
+    // SE
+    for (int rr = r - 1, ff = f + 1; rr >= 0 && ff < 8; --rr, ++ff) {
+        int s = rr * 8 + ff;
+        attacks |= BB(s);
+        if (blockers & BB(s)) break;
+    }
+    // SW
+    for (int rr = r - 1, ff = f - 1; rr >= 0 && ff >= 0; --rr, --ff) {
+        int s = rr * 8 + ff;
+        attacks |= BB(s);
+        if (blockers & BB(s)) break;
+    }
+
+    return attacks;
+}
+
+constexpr uint64_t BISHOP_MASKS[64] = {
+    bishopMaskFor(0),  bishopMaskFor(1),  bishopMaskFor(2),  bishopMaskFor(3),
+    bishopMaskFor(4),  bishopMaskFor(5),  bishopMaskFor(6),  bishopMaskFor(7),
+    bishopMaskFor(8),  bishopMaskFor(9),  bishopMaskFor(10), bishopMaskFor(11),
+    bishopMaskFor(12), bishopMaskFor(13), bishopMaskFor(14), bishopMaskFor(15),
+    bishopMaskFor(16), bishopMaskFor(17), bishopMaskFor(18), bishopMaskFor(19),
+    bishopMaskFor(20), bishopMaskFor(21), bishopMaskFor(22), bishopMaskFor(23),
+    bishopMaskFor(24), bishopMaskFor(25), bishopMaskFor(26), bishopMaskFor(27),
+    bishopMaskFor(28), bishopMaskFor(29), bishopMaskFor(30), bishopMaskFor(31),
+    bishopMaskFor(32), bishopMaskFor(33), bishopMaskFor(34), bishopMaskFor(35),
+    bishopMaskFor(36), bishopMaskFor(37), bishopMaskFor(38), bishopMaskFor(39),
+    bishopMaskFor(40), bishopMaskFor(41), bishopMaskFor(42), bishopMaskFor(43),
+    bishopMaskFor(44), bishopMaskFor(45), bishopMaskFor(46), bishopMaskFor(47),
+    bishopMaskFor(48), bishopMaskFor(49), bishopMaskFor(50), bishopMaskFor(51),
+    bishopMaskFor(52), bishopMaskFor(53), bishopMaskFor(54), bishopMaskFor(55),
+    bishopMaskFor(56), bishopMaskFor(57), bishopMaskFor(58), bishopMaskFor(59),
+    bishopMaskFor(60), bishopMaskFor(61), bishopMaskFor(62), bishopMaskFor(63)
+};
+
+
+constexpr uint64_t bishopMagicIndex(uint64_t blockers, int sq) {
+    return (blockers * BISHOP_MAGICS[sq]) >> BISHOP_SHIFTS[sq];
+}
+
+
+constexpr uint64_t subsetFromIndex(uint64_t mask, int index) {
+    uint64_t result = 0;
+    int bit = 0;
+
+    for (uint64_t m = mask; m; m &= m - 1) {
+        if (index & (1 << bit))
+            result |= (m & -m);
+        bit++;
+    }
+    return result;
+}
+
+constexpr auto generateBishopAttackTable() {
+    std::array<std::array<uint64_t, 512>, 64> table{};
+
+    for (int sq = 0; sq < 64; ++sq) {
+        uint64_t mask = BISHOP_MASKS[sq];
+        int bits = __builtin_popcountll(mask);
+
+        for (int i = 0; i < (1 << bits); ++i) {
+            uint64_t blockers = subsetFromIndex(mask, i);
+            uint64_t attack = bishopAttacksFor(sq, blockers);
+
+            uint64_t index = bishopMagicIndex(blockers, sq);
+            table[sq][index] = attack;
+        }
+    }
+    return table;
+}
+
+constexpr auto BISHOP_ATTACKS = generateBishopAttackTable();
+
+inline uint64_t bishopAttacks(int sq, uint64_t occAll) {
+    uint64_t blockers = occAll & BISHOP_MASKS[sq];
+    return BISHOP_ATTACKS[sq][bishopMagicIndex(blockers, sq)];
+}

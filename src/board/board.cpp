@@ -1,13 +1,7 @@
 #include <cctype>
 #include "board.h"
 #include "piece.h"
-
-
-constexpr inline uint64_t BB(int sq) { return 1ULL << sq; }
-
-constexpr inline bool onBoard(int r, int f) {
-    return r >= 0 && r < 8 && f >= 0 && f < 8;
-}
+#include "bitboard.h"
 
 Piece Board::pieceAt(int sq) const {
     uint64_t b = BB(sq);
