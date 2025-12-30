@@ -24,6 +24,10 @@ struct Board {
     bool whiteToMove;
     uint8_t castlingRights;   // bits: 0001 WK, 0010 WQ, 0100 BK, 1000 BQ
     int8_t enPassantSquare;   // -1 se não houver
+    
+    // Mapa de ataque, casas controladas por cada peça
+    int64_t whiteAttacks;
+    uint64_t blackAttacks;
 
     /**
      * @brief 
@@ -77,5 +81,13 @@ struct Board {
      */
     static Board fromFEN(const char* fen);
 
-    static Board froPGN(const char* pgn);
+    static Board fromPGN(const char* pgn);
+
+    
+    /**
+     * @brief Essa função constrói do zero um mapa de ataque que auxilia na geração
+     * de movimentos válidos para as peças. Num futuro update, podemos pensar em 
+     * uma implementação incremental, que não calcula tudo do zero.
+     */
+    void updateAttackBoards();
 };
