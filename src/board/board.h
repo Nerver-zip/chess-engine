@@ -2,6 +2,7 @@
 #include <cstdint>
 #include "piece.h"
 #include "../move/move.h"
+#include "bitboard.h"
 
 struct Board {
 
@@ -62,8 +63,25 @@ struct Board {
      * @param sq, a posição encodada num inteiro 64 bits, em bit board
      * @return Enum referente a peça ou vazio 
      */
-    inline Piece pieceAt(int sq) const;   // retorna enum Piece ou 0 se vazio
+    inline Piece pieceAt(int sq) const {
+        uint64_t b = BB(sq);
 
+        if (whitePawns & b)   return WPAWN;
+        if (whiteKnights & b) return WKNIGHT;
+        if (whiteBishops & b) return WBISHOP;
+        if (whiteRooks & b)   return WROOK;
+        if (whiteQueens & b)  return WQUEEN;
+        if (whiteKing & b)    return WKING;
+
+        if (blackPawns & b)   return BPAWN;
+        if (blackKnights & b) return BKNIGHT;
+        if (blackBishops & b) return BBISHOP;
+        if (blackRooks & b)   return BROOK;
+        if (blackQueens & b)  return BQUEEN;
+        if (blackKing & b)    return BKING;
+
+        return EMPTY;// retorna enum Piece ou 0 se vazio
+    }
     /**
      * @brief 
      * Cuida da lógica da aplicação do movimento. No momento, sem configurar roque,

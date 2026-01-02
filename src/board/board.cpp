@@ -1,27 +1,7 @@
 #include <cctype>
 #include "board.h"
-#include "piece.h"
 #include "bitboard.h"
-
-Piece Board::pieceAt(int sq) const {
-    uint64_t b = BB(sq);
-
-    if (whitePawns & b)   return WPAWN;
-    if (whiteKnights & b) return WKNIGHT;
-    if (whiteBishops & b) return WBISHOP;
-    if (whiteRooks & b)   return WROOK;
-    if (whiteQueens & b)  return WQUEEN;
-    if (whiteKing & b)    return WKING;
-
-    if (blackPawns & b)   return BPAWN;
-    if (blackKnights & b) return BKNIGHT;
-    if (blackBishops & b) return BBISHOP;
-    if (blackRooks & b)   return BROOK;
-    if (blackQueens & b)  return BQUEEN;
-    if (blackKing & b)    return BKING;
-
-    return EMPTY;
-}
+#include "attack.h"
 
 Board Board::fromFEN(const char* fen) {
     Board b = {};
@@ -126,11 +106,12 @@ Board Board::applyMove(const Move& m) const {
     return b;
 }
 
-constexpr int knightJumps[8] = {17, 15, 10, 6, -6, -10, -15, -17};
-
 void Board::updateAttackBoards() {
     whiteAttacks = 0;
     blackAttacks = 0;
+
+    // Occupancy total é necessária para calcular bloqueios de peças deslizantes
+    uint64_t occ = allPieces();
 
     // ==================== Peões ===============================
     // Peões brancos atacam casas diagonais à frente
@@ -149,24 +130,92 @@ void Board::updateAttackBoards() {
     blackAttacks |= bPawnLeft | bPawnRight;
 
     // =================== Cavalos ===============================
-    // Os cavalos se movimentam em deslocamentos pré definidos 
-    // 17 -> Sobe dois ranks (+16) e vai para a direita (+1). Mapeamos cada movimento
-    // Depois é só somar 
-    for (int sq = 0; sq < 64; ++sq) {
-        uint64_t mask = BB(sq);
-        if (whiteKnights & mask) {
-            for (int k = 0; k < 8; ++k) {
-                int target = sq + knightJumps[k];
-                if (target >= 0 && target < 64) whiteAttacks |= BB(target);
-            }
-        }
-        if (blackKnights & mask) {
-            for (int k = 0; k < 8; ++k) {
-                int target = sq + knightJumps[k];
-                if (target >= 0 && target < 64) blackAttacks |= BB(target);
-            }
-        }
+    // Os cavalos pulam em L. Usamos a tabela pré-calculada KNIGHT_ATTACKS.
+    // Iteramos apenas sobre os bits ativos (onde realmente tem cavalo) para performance.
+    
+    // Cavalos Brancos
+    uint64_t wKnights = whiteKnights;
+    while (wKnights) {
+        int sq = __builtin_ctzll(wKnights); // Pega o índice do primeiro bit ativo
+        whiteAttacks |= KNIGHT_ATTACKS[sq];
+        wKnights &= wKnights - 1;           // Remove esse bit para processar o próximo
     }
 
-    // ===== Futuro: bispo/torre/rainha/rei =====
+    // Cavalos Pretos
+    uint64_t bKnights = blackKnights;
+    while (bKnights) {
+        int sq = __builtin_ctzll(bKnights);
+        blackAttacks |= KNIGHT_ATTACKS[sq];
+        bKnights &= bKnights - 1;
+    }
+
+    // =================== Bispos ================================
+    // Usamos Magic Bitboards para calcular os ataques em O(1) considerando as peças que bloqueiam (occ).
+    
+    // Bispos Brancos
+    uint64_t wBishops = whiteBishops;
+    while (wBishops) {
+        int sq = __builtin_ctzll(wBishops);
+        whiteAttacks |= bishopAttacks(sq, occ);
+        wBishops &= wBishops - 1;
+    }
+
+    // Bispos Pretos
+    uint64_t bBishops = blackBishops;
+    while (bBishops) {
+        int sq = __builtin_ctzll(bBishops);
+        blackAttacks |= bishopAttacks(sq, occ);
+        bBishops &= bBishops - 1;
+    }
+
+    // =================== Torres ================================
+    // Mesma lógica de Magic Bitboards.
+    
+    // Torres Brancas
+    uint64_t wRooks = whiteRooks;
+    while (wRooks) {
+        int sq = __builtin_ctzll(wRooks);
+        whiteAttacks |= rookAttacks(sq, occ);
+        wRooks &= wRooks - 1;
+    }
+
+    // Torres Pretas
+    uint64_t bRooks = blackRooks;
+    while (bRooks) {
+        int sq = __builtin_ctzll(bRooks);
+        blackAttacks |= rookAttacks(sq, occ);
+        bRooks &= bRooks - 1;
+    }
+
+    // =================== Rainhas ===============================
+    // A rainha combina os movimentos de Torre e Bispo.
+    // Basta unir (OR) os ataques de ambos a partir da mesma casa.
+    
+    // Rainhas Brancas
+    uint64_t wQueens = whiteQueens;
+    while (wQueens) {
+        int sq = __builtin_ctzll(wQueens);
+        whiteAttacks |= (bishopAttacks(sq, occ) | rookAttacks(sq, occ));
+        wQueens &= wQueens - 1;
+    }
+
+    // Rainhas Pretas
+    uint64_t bQueens = blackQueens;
+    while (bQueens) {
+        int sq = __builtin_ctzll(bQueens);
+        blackAttacks |= (bishopAttacks(sq, occ) | rookAttacks(sq, occ));
+        bQueens &= bQueens - 1;
+    }
+
+    // =================== Reis ==================================
+    // O rei se move uma casa em qualquer direção. Usamos tabela pré-calculada.
+    // Como só existe 1 rei (geralmente), verificamos se o bitboard não é zero.
+    
+    if (whiteKing) {
+        whiteAttacks |= KING_ATTACKS[__builtin_ctzll(whiteKing)];
+    }
+
+    if (blackKing) {
+        blackAttacks |= KING_ATTACKS[__builtin_ctzll(blackKing)];
+    }
 }
