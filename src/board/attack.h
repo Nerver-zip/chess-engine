@@ -288,3 +288,128 @@ inline uint64_t bishopAttacks(int sq, uint64_t occAll) {
     uint64_t blockers = occAll & BISHOP_MASKS[sq];
     return BISHOP_ATTACKS[sq][bishopMagicIndex(blockers, sq)];
 }
+
+/* ============================================================
+                           TORRE
+   ============================================================ */
+
+
+constexpr uint64_t rookMaskFor(int sq) {
+    uint64_t mask = 0;
+    int r = sq / 8;
+    int f = sq % 8;
+
+    // N
+    for (int rr = r + 1; rr < 7; ++rr)
+        mask |= BB(rr * 8 + f);
+
+    // S
+    for (int rr = r - 1; rr > 0; --rr)
+        mask |= BB(rr * 8 + f);
+
+    // E
+    for (int ff = f + 1; ff < 7; ++ff)
+        mask |= BB(r * 8 + ff);
+
+    // W
+    for (int ff = f - 1; ff > 0; --ff)
+        mask |= BB(r * 8 + ff);
+
+    return mask;
+}
+
+
+constexpr uint64_t rookAttacksFor(int sq, uint64_t blockers) {
+    uint64_t attacks = 0;
+    int r = sq / 8;
+    int f = sq % 8;
+
+    // N
+    for (int rr = r + 1; rr < 8; ++rr) {
+        int s = rr * 8 + f;
+        attacks |= BB(s);
+        if (blockers & BB(s)) break;
+    }
+
+    // S
+    for (int rr = r - 1; rr >= 0; --rr) {
+        int s = rr * 8 + f;
+        attacks |= BB(s);
+        if (blockers & BB(s)) break;
+    }
+
+    // E
+    for (int ff = f + 1; ff < 8; ++ff) {
+        int s = r * 8 + ff;
+        attacks |= BB(s);
+        if (blockers & BB(s)) break;
+    }
+
+    // W
+    for (int ff = f - 1; ff >= 0; --ff) {
+        int s = r * 8 + ff;
+        attacks |= BB(s);
+        if (blockers & BB(s)) break;
+    }
+
+    return attacks;
+}
+
+
+constexpr uint64_t ROOK_MASKS[64] = {
+    rookMaskFor(0), rookMaskFor(1), rookMaskFor(2), rookMaskFor(3),
+    rookMaskFor(4), rookMaskFor(5), rookMaskFor(6), rookMaskFor(7),
+    rookMaskFor(8), rookMaskFor(9), rookMaskFor(10), rookMaskFor(11),
+    rookMaskFor(12), rookMaskFor(13), rookMaskFor(14), rookMaskFor(15),
+    rookMaskFor(16), rookMaskFor(17), rookMaskFor(18), rookMaskFor(19),
+    rookMaskFor(20), rookMaskFor(21), rookMaskFor(22), rookMaskFor(23),
+    rookMaskFor(24), rookMaskFor(25), rookMaskFor(26), rookMaskFor(27),
+    rookMaskFor(28), rookMaskFor(29), rookMaskFor(30), rookMaskFor(31),
+    rookMaskFor(32), rookMaskFor(33), rookMaskFor(34), rookMaskFor(35),
+    rookMaskFor(36), rookMaskFor(37), rookMaskFor(38), rookMaskFor(39),
+    rookMaskFor(40), rookMaskFor(41), rookMaskFor(42), rookMaskFor(43),
+    rookMaskFor(44), rookMaskFor(45), rookMaskFor(46), rookMaskFor(47),
+    rookMaskFor(48), rookMaskFor(49), rookMaskFor(50), rookMaskFor(51),
+    rookMaskFor(52), rookMaskFor(53), rookMaskFor(54), rookMaskFor(55),
+    rookMaskFor(56), rookMaskFor(57), rookMaskFor(58), rookMaskFor(59),
+    rookMaskFor(60), rookMaskFor(61), rookMaskFor(62), rookMaskFor(63)
+};
+
+
+constexpr uint64_t rookMagicIndex(uint64_t blockers, int sq) {
+    return (blockers * ROOK_MAGICS[sq]) >> ROOK_SHIFTS[sq];
+}
+
+constexpr auto generateRookAttackTable() {
+    std::array<std::array<uint64_t, 4096>, 64> table{};
+
+    for (int sq = 0; sq < 64; ++sq) {
+        uint64_t mask = ROOK_MASKS[sq];
+        int bits = __builtin_popcountll(mask);
+
+        for (int i = 0; i < (1 << bits); ++i) {
+            uint64_t blockers = subsetFromIndex(mask, i);
+            uint64_t attack = rookAttacksFor(sq, blockers);
+
+            uint64_t index = rookMagicIndex(blockers, sq);
+            table[sq][index] = attack;
+        }
+    }
+    return table;
+}
+
+constexpr auto ROOK_ATTACKS = generateRookAttackTable();
+
+inline uint64_t rookAttacks(int sq, uint64_t occAll) {
+    uint64_t blockers = occAll & ROOK_MASKS[sq];
+    return ROOK_ATTACKS[sq][rookMagicIndex(blockers, sq)];
+}
+
+/* ============================================================
+                           DAMA
+   ============================================================ */
+// Basta unir torre e bispo
+
+inline uint64_t queenAttacks(int sq, uint64_t occ) {
+    return bishopAttacks(sq, occ) | rookAttacks(sq, occ);
+}
