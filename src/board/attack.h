@@ -24,13 +24,15 @@
 /* ============================================================
                            PEÃO
    ============================================================ */
+constexpr uint64_t FILE_A = 0x0101010101010101ULL;
+constexpr uint64_t FILE_H = 0x8080808080808080ULL;
 
 constexpr uint64_t pawnAttackWhiteFor(int sq) {
     uint64_t b = BB(sq);
     uint64_t attacks = 0;
 
-    if ((b << 7) & ~0x0101010101010101ULL) attacks |= (b << 7);
-    if ((b << 9) & ~0x8080808080808080ULL) attacks |= (b << 9);
+    if ((b << 7) & ~FILE_H) attacks |= (b << 7);
+    if ((b << 9) & ~FILE_A) attacks |= (b << 9);
 
     return attacks;
 }
@@ -39,8 +41,8 @@ constexpr uint64_t pawnAttackBlackFor(int sq) {
     uint64_t b = BB(sq);
     uint64_t attacks = 0;
 
-    if ((b >> 9) & ~0x0101010101010101ULL) attacks |= (b >> 9);
-    if ((b >> 7) & ~0x8080808080808080ULL) attacks |= (b >> 7);
+    if ((b >> 9) & ~FILE_H) attacks |= (b >> 9);
+    if ((b >> 7) & ~FILE_A) attacks |= (b >> 7);
 
     return attacks;
 }

@@ -11,13 +11,13 @@ static bool isValidMove(const Board& board, std::vector<Move>& moves, int from, 
     m.flags = flags;
     m.promotion = promotion;
 
-    // 1. Aplica o movimento num tabuleiro temporário
+    // Aplica o movimento num tabuleiro temporário
     Board nextBoard = board.applyMove(m);
 
-    // 2. Atualiza o mapa de ataques do novo tabuleiro
+    // Atualiza o mapa de ataques do novo tabuleiro
     nextBoard.updateAttackBoards();
 
-    // 3. Verifica se o rei de quem acabou de mover (o "eu" do turno anterior) está em xeque
+    // Verifica se o rei de quem acabou de mover (o "eu" do turno anterior) está em xeque
     // Nota: applyMove inverte o turno (whiteToMove). 
     // Se quem moveu foi BRANCO, agora é vez do PRETO. Checamos se o rei BRANCO está sob ataque do PRETO.
     

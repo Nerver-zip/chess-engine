@@ -2,7 +2,7 @@
 #include <iostream>
 #include <iomanip>
 
-// Cores ANSI para o terminal
+// Cores ANSI
 #define RST  "\033[0m"
 #define CYN  "\033[36m"   // Bordas
 #define GRN  "\033[32m"   // Bits ativos ou White pieces
@@ -100,9 +100,7 @@ namespace Debug {
     void printAttackMaps(const Board& board) {
         std::cout << "\n" << BLD << "=== Attack Maps ===" << RST << "\n";
         
-        // Vamos imprimir lado a lado se possível, ou sequencial
         std::cout << YEL << ">> White Attacks:" << RST << "\n";
-        // Reusa a função printBitboard mas sem cabeçalho duplicado
         for (int rank = 7; rank >= 0; --rank) {
             std::cout << CYN << rank + 1 << "  " << RST;
             for (int file = 0; file < 8; ++file) {

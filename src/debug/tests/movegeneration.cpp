@@ -10,7 +10,7 @@
 int main() {
     // 1. Inicializa o tabuleiro com a posição inicial
     // FEN padrão: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-    Board board = Board::fromFEN("8/8/8/8/4k3/2b5/3N4/4K3 w - - 0 1");
+    Board board = Board::fromFEN("8/8/4k3/8/1b6/2N5/3K4/8 w HAha - 0 1");
     
     std::cout << "--- Tabuleiro Inicializado ---\n";
     

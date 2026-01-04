@@ -1,5 +1,6 @@
 CXX      := g++
-CXXFLAGS := -std=c++23 -Wall -Wextra -Wshadow -MMD -MP -fconstexpr-ops-limit=100000000
+CXXFLAGS := -std=c++17 -Wall -Wextra -Wshadow -MMD -MP -fconstexpr-ops-limit=100000000
+LDFLAGS  := -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 
 # Diretórios
 SRC_ROOT := src
@@ -50,7 +51,7 @@ directories:
 # Linkagem do frontend final (usa main.cpp)
 $(TARGET): $(OBJS) src/main.cpp
 	@echo "Linking $(TARGET)..."
-	@$(CXX) $(CXXFLAGS) $(OBJS) src/main.cpp -o $(TARGET)
+	@$(CXX) $(CXXFLAGS) $(OBJS) src/main.cpp -o $(TARGET) $(LDFLAGS)
 	@echo "Build successful -> $(TARGET)"
 
 # Compilação dos objetos do core

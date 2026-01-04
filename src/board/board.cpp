@@ -1,6 +1,5 @@
 #include <cctype>
 #include "board.h"
-#include "bitboard.h"
 #include "attack.h"
 
 Board Board::fromFEN(const char* fen) {
@@ -68,44 +67,120 @@ Board Board::fromFEN(const char* fen) {
 Board Board::applyMove(const Move& m) const {
     Board b = *this;
 
+    // Bitboards de origem e destino
     uint64_t fromBB = 1ULL << m.from;
     uint64_t toBB   = 1ULL << m.to;
 
-    auto movePiece = [&](uint64_t& bb) {
-        if (bb & fromBB) {
-            bb ^= fromBB;
-            bb |= toBB;
+    // 1. Limpa o destino (Capturas)
+    // Remove qualquer peça inimiga que esteja na casa de destino
+    if (whiteToMove) {
+        b.blackPawns   &= ~toBB; b.blackKnights &= ~toBB; b.blackBishops &= ~toBB;
+        b.blackRooks   &= ~toBB; b.blackQueens  &= ~toBB; b.blackKing    &= ~toBB;
+    } else {
+        b.whitePawns   &= ~toBB; b.whiteKnights &= ~toBB; b.whiteBishops &= ~toBB;
+        b.whiteRooks   &= ~toBB; b.whiteQueens  &= ~toBB; b.whiteKing    &= ~toBB;
+    }
+
+    // 2. Move a peça (Tratando Promoção)
+    if (m.flags & PROMOTION) {
+        // Se for promoção, remove o peão da origem e coloca a NOVA peça no destino
+        if (whiteToMove) {
+            b.whitePawns &= ~fromBB; // Remove peão
+            switch (m.promotion) {
+                case WQUEEN:  b.whiteQueens  |= toBB; break;
+                case WROOK:   b.whiteRooks   |= toBB; break;
+                case WBISHOP: b.whiteBishops |= toBB; break;
+                case WKNIGHT: b.whiteKnights |= toBB; break;
+            }
+        } else {
+            b.blackPawns &= ~fromBB; // Remove peão
+            switch (m.promotion) {
+                case BQUEEN:  b.blackQueens  |= toBB; break;
+                case BROOK:   b.blackRooks   |= toBB; break;
+                case BBISHOP: b.blackBishops |= toBB; break;
+                case BKNIGHT: b.blackKnights |= toBB; break;
+            }
         }
+    } else {
+        // Movimento Normal (não promoção)
+        // Helper lambda para mover o bit no bitboard correto
+        auto moveBit = [&](uint64_t& bb) {
+            if (bb & fromBB) {
+                bb &= ~fromBB;
+                bb |= toBB;
+            }
+        };
+
+        if (whiteToMove) {
+            moveBit(b.whitePawns); moveBit(b.whiteKnights); moveBit(b.whiteBishops);
+            moveBit(b.whiteRooks); moveBit(b.whiteQueens);  moveBit(b.whiteKing);
+        } else {
+            moveBit(b.blackPawns); moveBit(b.blackKnights); moveBit(b.blackBishops);
+            moveBit(b.blackRooks); moveBit(b.blackQueens);  moveBit(b.blackKing);
+        }
+    }
+
+    // 3. Tratamentos Especiais (Roque e En Passant)
+    
+    // En Passant (A captura não ocorre em 'to', mas na casa do peão inimigo)
+    if (m.flags & EN_PASSANT) {
+        int captureSq = whiteToMove ? (m.to - 8) : (m.to + 8);
+        uint64_t captureBB = 1ULL << captureSq;
+        
+        if (whiteToMove) b.blackPawns &= ~captureBB;
+        else             b.whitePawns &= ~captureBB;
+    }
+
+    // Roque (Mover a torre correspondente)
+    if (m.flags & KING_CASTLE) {
+        if (whiteToMove) { // h1 -> f1
+            b.whiteRooks &= ~(1ULL << 7); b.whiteRooks |= (1ULL << 5);
+        } else {           // h8 -> f8
+            b.blackRooks &= ~(1ULL << 63); b.blackRooks |= (1ULL << 61);
+        }
+    }
+    if (m.flags & QUEEN_CASTLE) {
+        if (whiteToMove) { // a1 -> d1
+            b.whiteRooks &= ~(1ULL << 0); b.whiteRooks |= (1ULL << 3);
+        } else {           // a8 -> d8
+            b.blackRooks &= ~(1ULL << 56); b.blackRooks |= (1ULL << 59);
+        }
+    }
+
+    // 4. Atualizar Estado do Jogo
+    
+    // Atualiza En Passant Square
+    b.enPassantSquare = -1; // Reset padrão
+    if (m.flags & DOUBLE_PAWN_PUSH) {
+        // A casa de en passant é a casa que foi "pulada"
+        b.enPassantSquare = whiteToMove ? (m.from + 8) : (m.from - 8);
+    }
+
+    // Atualiza Direitos de Roque (Castling Rights)
+    // Se rei ou torre moverem, ou torre for capturada, perde o direito.
+    // Máscara simples: Se mexeu em a1, perde WQ; e1, perde ambos W; h1, perde WK...
+    // castlingRights: 1=WK, 2=WQ, 4=BK, 8=BQ
+    
+    auto updateCastling = [&](int sq) {
+        if (sq == 0)  b.castlingRights &= ~2; // a1 (Torre WQ)
+        if (sq == 4)  b.castlingRights &= ~3; // e1 (Rei W)
+        if (sq == 7)  b.castlingRights &= ~1; // h1 (Torre WK)
+        if (sq == 56) b.castlingRights &= ~8; // a8 (Torre BQ)
+        if (sq == 60) b.castlingRights &= ~12;// e8 (Rei B)
+        if (sq == 63) b.castlingRights &= ~4; // h8 (Torre BK)
     };
+    
+    updateCastling(m.from);
+    updateCastling(m.to);
 
-    // Remover capturas, se tinha alguém em toBB, remover
-    b.blackPawns   &= ~toBB; b.blackKnights &= ~toBB; b.blackBishops &= ~toBB;
-    b.blackRooks   &= ~toBB; b.blackQueens  &= ~toBB; b.blackKing    &= ~toBB;
-    b.whitePawns   &= ~toBB; b.whiteKnights &= ~toBB; b.whiteBishops &= ~toBB;
-    b.whiteRooks   &= ~toBB; b.whiteQueens  &= ~toBB; b.whiteKing    &= ~toBB;
-
-
-    // Apenas um bitboard vai conter fromBB
-    movePiece(b.whitePawns);
-    movePiece(b.whiteKnights);
-    movePiece(b.whiteBishops);
-    movePiece(b.whiteRooks);
-    movePiece(b.whiteQueens);
-    movePiece(b.whiteKing);
-
-    movePiece(b.blackPawns);
-    movePiece(b.blackKnights);
-    movePiece(b.blackBishops);
-    movePiece(b.blackRooks);
-    movePiece(b.blackQueens);
-    movePiece(b.blackKing);
-
+    // Inverte o turno
     b.whiteToMove = !whiteToMove;
-    b.enPassantSquare = -1;
+    
+    // Os ataques (whiteAttacks/blackAttacks) estão desatualizados.
+    // O próximo Search chamará updateAttackBoards(), então não precisamos recalcular aqui.
 
     return b;
 }
-
 void Board::updateAttackBoards() {
     whiteAttacks = 0;
     blackAttacks = 0;
