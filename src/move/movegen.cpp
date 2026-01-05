@@ -1,13 +1,42 @@
 #include "movegen.h"
 
-// Helper para evitar repetição de código na validação
-// Retorna true se o movimento foi adicionado (era legal), false se era ilegal (rei em xeque)
+// Calcula o score do movimento seguindo MVV-LVA
+static int scoreMove(const Board& board, int from, int to, uint8_t flags, uint8_t promotion) {
+    int score = 0;
+
+    if (flags & CAPTURE) {
+        int victim = board.pieceAt(to);
+        int attacker = board.pieceAt(from);
+        
+        // Ajuste para En Passant (a vítima não está em 'to')
+        if (flags & EN_PASSANT) {
+            victim = (attacker == WPAWN) ? BPAWN : WPAWN;
+        }
+
+        // MVV-LVA: Vítima valiosa - Atacante barato
+        // Somamos um offset grande (10000) para garantir que capturas sejam
+        // analisadas antes de lances quietos na busca principal.
+        score = MVV_LVA_VALUES[victim] - MVV_LVA_VALUES[attacker] + 10000;
+    }
+
+    if (flags & PROMOTION) {
+        // Promoção vale muito (geralmente vira Dama)
+        score += MVV_LVA_VALUES[promotion] + 1000;
+    }
+
+    return score;
+}
+
+// ------------------------------------------
+// Validador Normal (MoveGen::generateMoves)
+// ------------------------------------------
 static bool validator(const Board& board, std::vector<Move>& moves, int from, int to, uint8_t flags, uint8_t promotion = EMPTY) {
     Move m;
     m.from = from;
     m.to = to;
     m.flags = flags;
     m.promotion = promotion;
+    
 
     // Aplica o movimento num tabuleiro temporário
     Board nextBoard = board.applyMove(m);
@@ -30,11 +59,14 @@ static bool validator(const Board& board, std::vector<Move>& moves, int from, in
     }
 
     // Se passou no teste, adiciona à lista
+    m.score = scoreMove(board, from, to, flags, promotion);
     moves.push_back(m);
     return true;
 }
 
-// Helper que filtra se o movimento além de legal, é "forçante"
+// --------------------------------------------------
+// Validador QSearch (MoveGen::generateForcingMoves)
+// --------------------------------------------------
 static bool addForcingIfLegal(const Board& board, std::vector<Move>& moves,
                               int from, int to, uint8_t flags, uint8_t promotion = EMPTY)
 {
@@ -43,7 +75,8 @@ static bool addForcingIfLegal(const Board& board, std::vector<Move>& moves,
     m.to = to;
     m.flags = flags;
     m.promotion = promotion;
-
+    
+    
     Board next = board.applyMove(m);
     next.updateAttackBoards();
 
@@ -64,8 +97,9 @@ static bool addForcingIfLegal(const Board& board, std::vector<Move>& moves,
 
     bool isCapture = flags & CAPTURE;
     bool isPromotion = flags & PROMOTION;
-
+    
     if (isCapture || isPromotion || givesCheck) {
+        m.score = scoreMove(board, from, to, flags, promotion);
         moves.push_back(m);
         return true;
     }

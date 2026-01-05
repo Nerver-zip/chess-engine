@@ -16,4 +16,21 @@ struct Move {
     uint8_t to;          // 0..63
     uint8_t promotion;  // Piece (só usado se PROMOTION)
     uint8_t flags;      // MoveFlags
+    int score;          // Pontuação MVV-LVA
+};
+
+static constexpr int MVV_LVA_VALUES[13] = {
+    0,      // EMPTY
+    100,    // WPAWN
+    320,    // WKNIGHT
+    330,    // WBISHOP
+    500,    // WROOK
+    900,    // WQUEEN
+    20000,  // WKING
+    100,    // BPAWN
+    320,    // BKNIGHT
+    330,    // BBISHOP
+    500,    // BROOK
+    900,    // BQUEEN
+    20000   // BKING
 };

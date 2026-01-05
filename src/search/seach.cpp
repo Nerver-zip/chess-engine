@@ -16,10 +16,11 @@ Move Search::searchBestMove(const Board& board, int depth) {
     
     // Se não há lances legais, o jogo acabou.
     if (moves.empty()) return {}; 
-
-    // TODO: Move Ordering na Raiz
-    // É crucial ordenar os lances aqui também para garantir que o melhor lance
-    // seja analisado cedo, melhorando o Alpha-Beta.
+    
+    // Move Ordering MVV-LVA
+    std::sort(moves.begin(), moves.end(), [](const Move& a, const Move& b){
+        return a.score > b.score;
+    });
     
     Move bestMove;
     int bestScore = -INF;
@@ -31,8 +32,7 @@ Move Search::searchBestMove(const Board& board, int depth) {
     for (const auto& move : moves) {
         Board nextBoard = board.applyMove(move);
         
-        // CRÍTICO: Atualiza os mapas de ataque.
-        // O MoveGen da PRÓXIMA recursão precisa disso para saber se o rei está em xeque
+        // O MoveGen da próxima recursão precisa disso para saber se o rei está em xeque
         // e para filtrar lances ilegais do oponente.
         nextBoard.updateAttackBoards();
 
@@ -102,6 +102,12 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
     //  4. History Heuristic
     //  5. Demais lances
 
+    // Atualmente só usando MVV-LVA
+    
+    std::sort(moves.begin(), moves.end(), [](const Move& a, const Move& b){
+        return a.score > b.score;
+    });
+
     // =============================================================
     // Recursão e Poda Alpha-Beta
     // =============================================================
@@ -154,10 +160,10 @@ int Search::quiescence(const Board& board, int alpha, int beta) {
 
     std::vector<Move> moves = MoveGen::generateForcingMoves(board);
     
-    //-------------------------------------------------------------------
-    // TODO: Ordenação MVV-LVA aqui é CRÍTICA para performance do QSearch
-    // (Capturar peça valiosa com peça barata primeiro)
-    // ------------------------------------------------------------------
+    // Ordenação MVV-LVA
+    std::sort(moves.begin(), moves.end(), [](const Move& a, const Move& b){
+        return a.score > b.score;
+    });
 
     for (const auto& move : moves) {
 

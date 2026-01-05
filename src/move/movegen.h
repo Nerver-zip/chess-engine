@@ -16,6 +16,14 @@ public:
 
 private:
 
+    /**
+     * @brief Gera todos os movimentos pseudo-legais para peças filtrado com um validador
+     *
+     * @tparam Validator O filtro (pode filtrar para apenas movimentos legais, capturas, xeques, evasões)
+     * @param board O Estado atual
+     * @param moves Container que armazena os movimentos finais 
+     * @param validator O filtro a ser utilizado
+     */
     template<typename Validator>
     static void generateAll(const Board& board, std::vector<Move>& moves, Validator&& validator)
     {
