@@ -2,6 +2,8 @@
 #include <iostream>
 #include <iomanip>
 
+#ifdef DEBUG 
+
 // Cores ANSI
 #define RST  "\033[0m"
 #define CYN  "\033[36m"   // Bordas
@@ -138,3 +140,5 @@ namespace Debug {
         std::cout << "\n";
     }
 }
+
+#endif  // DEBUG

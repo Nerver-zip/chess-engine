@@ -2,6 +2,8 @@
 #include <string>
 #include "../board/board.h"
 
+#ifdef DEBUG
+
 namespace Debug {
 
     /**
@@ -23,3 +25,14 @@ namespace Debug {
 
     void printMove(const Move& m);  
 }
+
+#else
+
+namespace Debug {
+    inline void printBitboard(uint64_t, const std::string& = "") {}
+    inline void printBoard(const Board&) {}
+    inline void printAttackMaps(const Board&) {}
+    inline void printMove(const Move&) {}
+}
+
+#endif 

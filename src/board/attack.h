@@ -29,22 +29,16 @@ constexpr uint64_t FILE_H = 0x8080808080808080ULL;
 
 constexpr uint64_t pawnAttackWhiteFor(int sq) {
     uint64_t b = BB(sq);
-    uint64_t attacks = 0;
 
-    if ((b << 7) & ~FILE_H) attacks |= (b << 7);
-    if ((b << 9) & ~FILE_A) attacks |= (b << 9);
-
-    return attacks;
+    return ((b & ~FILE_A) << 7) |
+           ((b & ~FILE_H) << 9);
 }
 
 constexpr uint64_t pawnAttackBlackFor(int sq) {
     uint64_t b = BB(sq);
-    uint64_t attacks = 0;
 
-    if ((b >> 9) & ~FILE_H) attacks |= (b >> 9);
-    if ((b >> 7) & ~FILE_A) attacks |= (b >> 7);
-
-    return attacks;
+    return ((b & ~FILE_H) >> 7) |
+           ((b & ~FILE_A) >> 9);
 }
 
 constexpr uint64_t PAWN_ATTACKS[2][64] = {

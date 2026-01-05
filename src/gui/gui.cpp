@@ -1,6 +1,7 @@
 #include "gui.h"
 #include "../move/movegen.h"
 #include "../search/search.h"
+#include "../debuglib/debug.h"
 #include <iostream>
 #include <algorithm>
 
@@ -21,6 +22,8 @@ ChessGUI::ChessGUI() {
     legalMoves = MoveGen::generateMoves(board);
     
     loadAssets();
+    Debug::printBoard(board);
+    Debug::printAttackMaps(board);
 }
 
 ChessGUI::~ChessGUI() {
@@ -67,8 +70,10 @@ int ChessGUI::getSquareFromMouse() {
     int rank = 7 - (int)(m.y / sz);
 
     // Clamp para segurança
-    if (file < 0) file = 0; if (file > 7) file = 7;
-    if (rank < 0) rank = 0; if (rank > 7) rank = 7;
+    if (file < 0) file = 0; 
+    if (file > 7) file = 7;
+    if (rank < 0) rank = 0; 
+    if (rank > 7) rank = 7;
 
     return rank * 8 + file;
 }
@@ -231,9 +236,12 @@ void ChessGUI::performMove(Move m) {
     board = board.applyMove(m);
     board.updateAttackBoards();
     legalMoves = MoveGen::generateMoves(board);
-    
+  
     // No futuro: Som
     // PlaySound(moveSound);
+    
+    Debug::printBoard(board);
+    Debug::printAttackMaps(board);
 }
 
 void ChessGUI::makeEngineMove() {

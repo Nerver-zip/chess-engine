@@ -187,23 +187,21 @@ void Board::updateAttackBoards() {
 
     // Occupancy total é necessária para calcular bloqueios de peças deslizantes
     uint64_t occ = allPieces();
-
+        
     // ==================== Peões ===============================
     // Peões brancos atacam casas diagonais à frente
     // Para ataque a esquerda ir para o rank acima (8 casas) e subtrair uma, um shift de 7 em bitboard
-    // Ataque a direita são 9 casas a mais. Preto é o contrário. Mas tem que tirar a coluna A
-    // no ataque da esquerda e tirar a coluna H no ataque da direita feito com bitwise AND com uma mask hexa
+    // Ataque a direita são 9 casas a mais. Preto é o contrário. 
+
+    // --- Peões Brancos ---
+    whiteAttacks |= ((whitePawns & ~FILE_A) << 7);
+    whiteAttacks |= ((whitePawns & ~FILE_H) << 9);
     
-    // Peões brancos
-    uint64_t wPawnLeft  = (whitePawns << 7) & ~0x0101010101010101ULL; // remove coluna a
-    uint64_t wPawnRight = (whitePawns << 9) & ~0x8080808080808080ULL; // remove coluna h
-    whiteAttacks |= wPawnLeft | wPawnRight;
 
-    // Peões pretos
-    uint64_t bPawnLeft  = (blackPawns >> 9) & ~0x0101010101010101ULL;
-    uint64_t bPawnRight = (blackPawns >> 7) & ~0x8080808080808080ULL;
-    blackAttacks |= bPawnLeft | bPawnRight;
-
+    // --- Peões Pretos ---
+    blackAttacks |= ((blackPawns & ~FILE_A) >> 9);
+    blackAttacks |= ((blackPawns & ~FILE_H) >> 7);
+    
     // =================== Cavalos ===============================
     // Os cavalos pulam em L. Usamos a tabela pré-calculada KNIGHT_ATTACKS.
     // Iteramos apenas sobre os bits ativos (onde realmente tem cavalo) para performance.

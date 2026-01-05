@@ -66,30 +66,15 @@ Move Search::searchBestMove(const Board& board, int depth) {
  * fazendo a engine preferir o mate mais rápido.
  */
 int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply) {
-    // =============================================================
-    // 1. Caso Base: Folha da Árvore
-    // =============================================================
+    
     if (depth == 0) {
-        // TODO: Quiescence Search (Busca de Quietude)
-        // Se a posição "não está quieta" (ex: existem capturas forçadas),
-        // devemos continuar buscando para evitar o "Horizon Effect".
-        // Por enquanto, retornamos apenas a avaliação estática.
-        return Eval::evaluate(board);
+        return quiescence(board, alpha, beta);
     }
 
-    // =============================================================
-    // 2. Geração de Movimentos
-    // =============================================================
-    // O MoveGen::generateMoves já retorna apenas movimentos ESTRITAMENTE legais.
-    // Não precisamos verificar xeque dentro do loop.
     std::vector<Move> moves = MoveGen::generateMoves(board);
 
-    // =============================================================
-    // 3. Verificação de Fim de Jogo (Terminal Node)
-    // =============================================================
     if (moves.empty()) {
         // Se não há lances legais, ou é Mate ou é Afogamento (Stalemate).
-        // Verificamos se o rei do lado atual está em xeque.
         bool inCheck = board.whiteToMove 
                        ? (board.whiteKing & board.blackAttacks)
                        : (board.blackKing & board.whiteAttacks);
@@ -107,7 +92,7 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
     }
 
     // =============================================================
-    // 4. Move Ordering (Ordenação de Movimentos)
+    // Move Ordering (Ordenação de Movimentos)
     // =============================================================
     // TODO: Implementar heurísticas de ordenação.
     // O Alpha-Beta funciona muito melhor se analisarmos os melhores lances primeiro.
@@ -118,7 +103,7 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
     //  5. Demais lances
 
     // =============================================================
-    // 5. Recursão e Poda Alpha-Beta
+    // Recursão e Poda Alpha-Beta
     // =============================================================
     int bestVal = -INF;
 
@@ -150,4 +135,44 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
     }
 
     return bestVal;
+}
+
+int Search::quiescence(const Board& board, int alpha, int beta) {
+    // Avaliamos a posição atual. Se já for boa o suficiente (>= beta),
+    // assumimos que não precisamos capturar nada e cortamos (Beta Cutoff).
+    // Isso evita que sejamos forçados a fazer capturas ruins.
+    int stand_pat = Eval::evaluate(board);
+
+    if (stand_pat >= beta) {
+        return beta;
+    }
+
+    // Se a avaliação estática melhora nosso alpha, atualizamos.
+    if (stand_pat > alpha) {
+        alpha = stand_pat;
+    }
+
+    std::vector<Move> moves = MoveGen::generateForcingMoves(board);
+    
+    //-------------------------------------------------------------------
+    // TODO: Ordenação MVV-LVA aqui é CRÍTICA para performance do QSearch
+    // (Capturar peça valiosa com peça barata primeiro)
+    // ------------------------------------------------------------------
+
+    for (const auto& move : moves) {
+
+        Board nextBoard = board.applyMove(move);
+        nextBoard.updateAttackBoards();
+
+        int score = -quiescence(nextBoard, -beta, -alpha);
+
+        if (score >= beta) {
+            return beta;
+        }
+        if (score > alpha) {
+            alpha = score;
+        }
+    }
+
+    return alpha;
 }

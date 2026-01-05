@@ -29,4 +29,14 @@ private:
      * @return A pontuação da posição (do ponto de vista de quem joga).
      */
     static int negamax(const Board& board, int depth, int alpha, int beta, int ply);
+
+    /**
+     * @brief Q-search, usada após a profundidade limite para continuar buscando
+     * Enquanto a posição não estiver "resolvida" (capturas pendentes, pode-se adicionar xeques)
+     * @param board Estado atual 
+     * @param alpha Melhor score do lado atual
+     * @param beta  Melhor score do oponente
+     * @return A pontuação da posição (do ponto de vista de quem joga).
+     */
+    static int quiescence(const Board& board, int alpha, int beta);
 };
