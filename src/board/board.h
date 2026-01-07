@@ -100,6 +100,7 @@ struct Board {
     static Board fromFEN(const char* fen);
 
     static Board fromPGN(const char* pgn);
+    
 
     
     /**
@@ -108,4 +109,13 @@ struct Board {
      * uma implementação incremental, que não calcula tudo do zero.
      */
     void updateAttackBoards();
+
+    /**
+     * @brief Retorna bitboard de todas as peças que atacam 
+     * 'sq' (considerando blockers em 'occupied')
+     * @param sq A casa (0, 63)
+     * @param occupied Máscara de ocupação do tabuleiro
+     * @return 
+     */
+    uint64_t attackersTo(int sq, uint64_t occupied) const;
 };

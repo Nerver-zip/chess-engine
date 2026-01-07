@@ -12,7 +12,7 @@ public:
     static std::vector<Move> generateMoves(const Board& board);
 
     // Para Q-search
-    static std::vector<Move> generateForcingMoves(const Board& board);
+    static std::vector<Move> generateWinningMoves(const Board& board);
 
 private:
 

@@ -292,3 +292,30 @@ void Board::updateAttackBoards() {
         blackAttacks |= KING_ATTACKS[__builtin_ctzll(blackKing)];
     }
 }
+
+uint64_t Board::attackersTo(int sq, uint64_t occupied) const {
+    uint64_t attackers = 0;
+
+    // Peões
+    // Quem ataca 'sq' como peão branco? As casas de onde um peão PRETO atacaria.
+    // Usamos sua tabela já existente PAWN_ATTACKS:
+    // PAWN_ATTACKS[1] são ataques de peões pretos. A intersecção disso com peões brancos = peões brancos atacando sq.
+    attackers |= (PAWN_ATTACKS[1][sq] & whitePawns);
+    attackers |= (PAWN_ATTACKS[0][sq] & blackPawns);
+
+    // Cavalos
+    attackers |= (KNIGHT_ATTACKS[sq] & (whiteKnights | blackKnights));
+
+    // Bispos e Rainhas (Diagonal)
+    uint64_t diagAttacks = bishopAttacks(sq, occupied);
+    attackers |= (diagAttacks & (whiteBishops | blackBishops | whiteQueens | blackQueens));
+
+    // Torres e Rainhas (Ortogonal)
+    uint64_t orthoAttacks = rookAttacks(sq, occupied);
+    attackers |= (orthoAttacks & (whiteRooks | blackRooks | whiteQueens | blackQueens));
+
+    // Reis
+    attackers |= (KING_ATTACKS[sq] & (whiteKing | blackKing));
+
+    return attackers;
+}

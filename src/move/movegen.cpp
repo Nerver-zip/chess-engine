@@ -1,4 +1,5 @@
 #include "movegen.h"
+#include <iostream>
 
 // Calcula o score do movimento seguindo MVV-LVA
 static int scoreMove(const Board& board, int from, int to, uint8_t flags, uint8_t promotion) {
@@ -64,8 +65,9 @@ static bool validator(const Board& board, std::vector<Move>& moves, int from, in
     return true;
 }
 
+/*
 // --------------------------------------------------
-// Validador QSearch (MoveGen::generateForcingMoves)
+// Filtro de lances de promoção, captura e xeque 
 // --------------------------------------------------
 static bool addForcingIfLegal(const Board& board, std::vector<Move>& moves,
                               int from, int to, uint8_t flags, uint8_t promotion = EMPTY)
@@ -106,6 +108,151 @@ static bool addForcingIfLegal(const Board& board, std::vector<Move>& moves,
 
     return false;
 }
+*/
+
+// Helper para encontrar o bit da peça de menor valor num bitboard de atacantes
+static int getLeastValuableAttacker(const Board& board, uint64_t attackers, bool whiteToMove) {
+    // Ordem de verificação: Peão -> Cavalo -> Bispo -> Torre -> Dama -> Rei
+    
+    uint64_t pawns = whiteToMove ? board.whitePawns : board.blackPawns;
+    if (attackers & pawns) return __builtin_ctzll(attackers & pawns);
+
+    uint64_t knights = whiteToMove ? board.whiteKnights : board.blackKnights;
+    if (attackers & knights) return __builtin_ctzll(attackers & knights);
+
+    uint64_t bishops = whiteToMove ? board.whiteBishops : board.blackBishops;
+    if (attackers & bishops) return __builtin_ctzll(attackers & bishops);
+
+    uint64_t rooks = whiteToMove ? board.whiteRooks : board.blackRooks;
+    if (attackers & rooks) return __builtin_ctzll(attackers & rooks);
+
+    uint64_t queens = whiteToMove ? board.whiteQueens : board.blackQueens;
+    if (attackers & queens) return __builtin_ctzll(attackers & queens);
+
+    uint64_t king = whiteToMove ? board.whiteKing : board.blackKing;
+    if (attackers & king) return __builtin_ctzll(attackers & king);
+
+    return -1;
+}
+
+// ============================================================================
+// SEE (Static Exchange Evaluation)
+// Simula a sequência de trocas na casa 'to' para determinar se o lance é vantajoso.
+// Considera raios-X (baterias) e a opção de parar a troca
+static bool see(const Board& board, int from, int to, int capturedPieceType) {
+    int gain[32];
+    int d = 0;
+
+    gain[d] = MVV_LVA_VALUES[capturedPieceType];
+
+    uint64_t fromBB = (1ULL << from);
+    uint64_t occ = board.allPieces();
+    occ &= ~fromBB; 
+    occ |= (1ULL << to); 
+
+    uint64_t attackers = board.attackersTo(to, occ);
+    bool sideToMove = !board.whiteToMove; 
+    int attackerType = board.pieceAt(from);
+    
+    while (true) {
+        d++;
+        
+        gain[d] = MVV_LVA_VALUES[attackerType] - gain[d-1];
+
+        // Pruning: Se o ganho acumulado é ruim e o oponente pode parar, ele para.
+        if (std::max(-gain[d-1], gain[d]) < 0) break; 
+        
+        // Filtra atacantes usando & occ
+        uint64_t myAttackers = attackers & (sideToMove ? board.whitePieces() : board.blackPieces()) & occ;
+        
+        if (myAttackers == 0) break;
+
+        int lvaSq = getLeastValuableAttacker(board, myAttackers, sideToMove);
+        if (lvaSq == -1) break;
+
+        int lvaPiece = board.pieceAt(lvaSq); 
+        uint64_t lvaBB = (1ULL << lvaSq);
+        
+        // Remove a peça da ocupação (ela foi "comida" ou "moveu")
+        occ &= ~lvaBB; 
+        
+        // Atualização de Raio-X
+        // (Isso vai re-adicionar lvaSq em 'attackers' porque o raio passa por lá e a peça estática existe,
+        //  mas o filtro '& occ' na próxima iteração vai ignorá-la.
+        if (lvaPiece == WPAWN || lvaPiece == BPAWN || 
+            lvaPiece == WBISHOP || lvaPiece == BBISHOP || 
+            lvaPiece == WQUEEN || lvaPiece == BQUEEN) {
+            attackers |= (bishopAttacks(to, occ) & (board.whiteBishops | board.blackBishops | board.whiteQueens | board.blackQueens));
+        }
+        if (lvaPiece == WROOK || lvaPiece == BROOK || 
+            lvaPiece == WQUEEN || lvaPiece == BQUEEN) {
+            attackers |= (rookAttacks(to, occ) & (board.whiteRooks | board.blackRooks | board.whiteQueens | board.blackQueens));
+        }
+
+        attackerType = lvaPiece;
+        sideToMove = !sideToMove;
+    }
+
+    // Minimax reverso
+    while (--d) {
+        gain[d-1] = -std::max(-gain[d-1], gain[d]);
+    }
+
+    return gain[0] >= 0;
+}
+
+// =============================================================================================
+// Validador QSearch = Filtro por promoções e capturas que ganham material (avaliação estática)
+// =============================================================================================
+static bool addWinningCaptureIfLegal(const Board& board, std::vector<Move>& moves,
+                                     int from, int to, uint8_t flags, uint8_t promotion = EMPTY)
+{
+    // Filtro Básico: Apenas Capturas e Promoções
+    bool isCapture = flags & CAPTURE;
+    bool isPromotion = flags & PROMOTION;
+    if (!isCapture && !isPromotion) return false;
+
+    // Calcula Score MVV-LVA e prepara o objeto Move
+    Move m; m.from = from; m.to = to; m.flags = flags; m.promotion = promotion;
+    m.score = scoreMove(board, from, to, flags, promotion);
+
+    // Static Exchange Evaluation (SEE)
+    // Se a captura parece ruim (vítima <= atacante), verificamos se a troca compensa.
+    if (isCapture) {
+        int victim = board.pieceAt(to);
+        
+        if (flags & EN_PASSANT) {
+            victim = board.whiteToMove ? BPAWN : WPAWN;
+        }
+
+        int victimVal = MVV_LVA_VALUES[victim];
+        int attackerVal = MVV_LVA_VALUES[board.pieceAt(from)];
+
+        // Regra simples para SEE:
+        // 1. Se capturamos peça mais valiosa (PxQ), aceitamos direto (Good Capture).
+        // 2. Se capturamos igual ou menor (QxP ou PxP), rodamos SEE para ver se não perdemos na troca.
+        if (victimVal <= attackerVal) {
+             if (!see(board, from, to, victim)) {
+                 return false; // SEE diz que perdemos material -> Corta o lance (Pruning)
+             }
+        }
+    }
+
+    // Validação de Legalidade (Xeque)
+    // Deixamos para o final pois é a parte mais pesada (applyMove + ataques)
+    Board next = board.applyMove(m);
+    next.updateAttackBoards();
+
+    bool movedByWhite = !next.whiteToMove;
+    if (movedByWhite) {
+        if (next.whiteKing & next.blackAttacks) return false;
+    } else {
+        if (next.blackKing & next.whiteAttacks) return false;
+    }
+
+    moves.push_back(m);
+    return true;
+}
 
 struct NormalValidator {
     __attribute__((always_inline))
@@ -119,7 +266,7 @@ struct QSearchValidator {
     __attribute__((always_inline))
     inline bool operator()(const Board& b, std::vector<Move>& m,
                             int f,int t,uint8_t fl,uint8_t p = EMPTY) const {
-        return addForcingIfLegal(b,m,f,t,fl,p);
+        return addWinningCaptureIfLegal(b,m,f,t,fl,p);
     }
 };
 
@@ -131,7 +278,7 @@ std::vector<Move> MoveGen::generateMoves(const Board& board)
     return moves;
 }
 
-std::vector<Move> MoveGen::generateForcingMoves(const Board& board)
+std::vector<Move> MoveGen::generateWinningMoves(const Board& board)
 {
     std::vector<Move> moves;
     moves.reserve(64);

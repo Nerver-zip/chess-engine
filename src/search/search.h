@@ -2,11 +2,18 @@
 #include "../board/board.h"
 #include "../move/movegen.h"
 #include "../move/move.h"
+#include <cstdint>
 
 // Valores para infinito e Mate. 
 // Mate não é infinito real para podermos calcular "Mate em X lances"
 constexpr int INF = 1000000;
 constexpr int MATE_SCORE = 100000; 
+
+struct SearchStats {
+    uint64_t nodes = 0;
+    uint64_t qnodes = 0;
+    uint64_t evaluations = 0;
+};
 
 class Search {
 public:
@@ -18,7 +25,10 @@ public:
      */
     static Move searchBestMove(const Board& board, int depth);
 
+
 private:
+    static inline SearchStats stats;
+
     /**
      * @brief O algoritmo Negamax com Alpha-Beta Pruning.
      * * @param board Estado atual.

@@ -1,5 +1,6 @@
 #include "search.h"
 #include "../eval/eval.h"
+#include "../debuglib/debug.h"
 #include <algorithm>
 #include <iostream>
 
@@ -11,7 +12,17 @@
  * Isso ajuda muito no ordenamento de movimentos e gerenciamento de tempo.
  */
 Move Search::searchBestMove(const Board& board, int depth) {
-    // 1. Gera lances legais da raiz
+    // ============= DEBUG ================
+    Search::stats.nodes  = 0;
+    Search::stats.qnodes = 0;
+    Search::stats.evaluations = 0;
+
+    Debug::RAII_Timer raii_timer("Search");
+    Debug::Stopwatch stopwatch;
+
+    // ====================================
+
+    // Gera lances legais da raiz
     std::vector<Move> moves = MoveGen::generateMoves(board);
     
     // Se não há lances legais, o jogo acabou.
@@ -55,6 +66,21 @@ Move Search::searchBestMove(const Board& board, int depth) {
             alpha = score;
         }
     }
+    
+    uint64_t us = stopwatch.elapsed_us();
+    uint64_t total_nodes = stats.nodes + stats.qnodes;
+    
+    uint64_t nps = (total_nodes * 1000000) / us;
+
+    Debug::cout << "\n=== Search Statistics ===\n";
+    Debug::cout << "Depth:       " << depth << "\n";
+    Debug::cout << "Time:        " << (us / 1000.0) << " ms\n";
+    Debug::cout << "Nodes:       " << stats.nodes << " (Interior)\n";
+    Debug::cout << "QNodes:      " << stats.qnodes << " (Quiescence)\n";
+    Debug::cout << "Total Nodes: " << total_nodes << "\n";
+    Debug::cout << "Evaluations: " << stats.evaluations << "\n";
+    Debug::cout << "NPS:         " << nps << " nodes/sec\n";
+    Debug::cout << "=========================\n";
 
     return bestMove;
 }
@@ -66,8 +92,9 @@ Move Search::searchBestMove(const Board& board, int depth) {
  * fazendo a engine preferir o mate mais rápido.
  */
 int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply) {
-    
+    ++Search::stats.nodes;
     if (depth == 0) {
+        ++Search::stats.evaluations;
         return quiescence(board, alpha, beta);
     }
 
@@ -144,6 +171,7 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
 }
 
 int Search::quiescence(const Board& board, int alpha, int beta) {
+    ++Search::stats.qnodes;
     // Avaliamos a posição atual. Se já for boa o suficiente (>= beta),
     // assumimos que não precisamos capturar nada e cortamos (Beta Cutoff).
     // Isso evita que sejamos forçados a fazer capturas ruins.
@@ -158,7 +186,7 @@ int Search::quiescence(const Board& board, int alpha, int beta) {
         alpha = stand_pat;
     }
 
-    std::vector<Move> moves = MoveGen::generateForcingMoves(board);
+    std::vector<Move> moves = MoveGen::generateWinningMoves(board);
     
     // Ordenação MVV-LVA
     std::sort(moves.begin(), moves.end(), [](const Move& a, const Move& b){
@@ -166,7 +194,6 @@ int Search::quiescence(const Board& board, int alpha, int beta) {
     });
 
     for (const auto& move : moves) {
-
         Board nextBoard = board.applyMove(move);
         nextBoard.updateAttackBoards();
 
