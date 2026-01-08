@@ -1,6 +1,8 @@
 #pragma once
 #include <cstdint>
 
+#define OFFSET 10000
+
 enum MoveFlags : uint8_t {
     QUIET      = 0,
     CAPTURE    = 1 << 0,

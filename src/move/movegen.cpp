@@ -17,7 +17,7 @@ static int scoreMove(const Board& board, int from, int to, uint8_t flags, uint8_
         // MVV-LVA: Vítima valiosa - Atacante barato
         // Somamos um offset grande (10000) para garantir que capturas sejam
         // analisadas antes de lances quietos na busca principal.
-        score = MVV_LVA_VALUES[victim] - MVV_LVA_VALUES[attacker] + 10000;
+        score = MVV_LVA_VALUES[victim] - MVV_LVA_VALUES[attacker] + OFFSET;
     }
 
     if (flags & PROMOTION) {

@@ -9,6 +9,11 @@
 constexpr int INF = 1000000;
 constexpr int MATE_SCORE = 100000; 
 
+// Definir um pouco abaixo do OFFSET já que MVV-LVA (capturas) devem ter prioridade
+constexpr int KILLER_1_SCORE = OFFSET * 0.9;
+constexpr int KILLER_2_SCORE = OFFSET * 0.8;
+constexpr int MAX_PLY = 64;
+
 struct SearchStats {
     uint64_t nodes = 0;
     uint64_t qnodes = 0;
@@ -28,6 +33,7 @@ public:
 
 private:
     static inline SearchStats stats;
+    static inline Move killerMoves[MAX_PLY][2];
 
     /**
      * @brief O algoritmo Negamax com Alpha-Beta Pruning.

@@ -2,6 +2,7 @@
 #include "../eval/eval.h"
 #include "../debuglib/debug.h"
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 
 /**
@@ -21,7 +22,8 @@ Move Search::searchBestMove(const Board& board, int depth) {
     Debug::Stopwatch stopwatch;
 
     // ====================================
-
+    std::memset(killerMoves, 0, sizeof(killerMoves));
+   
     // Gera lances legais da raiz
     std::vector<Move> moves = MoveGen::generateMoves(board);
     
@@ -129,8 +131,28 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
     //  4. History Heuristic
     //  5. Demais lances
 
-    // Atualmente só usando MVV-LVA
+    // Atualmente atualmente usando MVL-LVA + Killer Moves
     
+    // =============================================================
+    // APLICANDO BÔNUS PARA KILLER MOVES
+    // =============================================================
+    // Antes de ordenar, verificamos se algum lance gerado é um Killer Move desse ply.
+    // Se for, damos um score alto para ele ser testado logo após as capturas.
+    
+    if (ply < MAX_PLY) {
+        for (auto& m : moves) {
+            if (m.flags & CAPTURE) continue;
+            
+            // Aplicar bônus se for killer move (quiet move que fez beta cutoff)
+            if (m.from == killerMoves[ply][0].from && m.to == killerMoves[ply][0].to) {
+                m.score = KILLER_1_SCORE;
+            }
+            else if (m.from == killerMoves[ply][1].from && m.to == killerMoves[ply][1].to) {
+                m.score = KILLER_2_SCORE;
+            }
+        }
+    }
+
     std::sort(moves.begin(), moves.end(), [](const Move& a, const Move& b){
         return a.score > b.score;
     });
@@ -162,7 +184,19 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
         // Se o score for maior que beta, o oponente evitará essa variante.
         // Podemos parar de buscar (Fail High).
         if (alpha >= beta) {
-            // TODO: Salvar este lance como "Killer Move" para ordenação futura
+            
+            // Salvar killer move 
+            if (!(move.flags & CAPTURE) && ply < MAX_PLY) {
+                bool isFirst = (move.from == killerMoves[ply][0].from && move.to == killerMoves[ply][0].to);
+                
+                if (!isFirst) {
+                    // Empurra o Killer 1 para a posição 2
+                    killerMoves[ply][1] = killerMoves[ply][0];
+                    // Salva o novo lance como Killer 1 (Prioridade máxima)
+                    killerMoves[ply][0] = move;
+                }
+            }
+            
             break; 
         }
     }
