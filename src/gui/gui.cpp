@@ -23,7 +23,6 @@ ChessGUI::ChessGUI() {
     
     loadAssets();
     Debug::printBoard(board);
-    Debug::printAttackMaps(board);
 }
 
 ChessGUI::~ChessGUI() {
@@ -241,7 +240,6 @@ void ChessGUI::performMove(Move m) {
     // PlaySound(moveSound);
     
     Debug::printBoard(board);
-    Debug::printAttackMaps(board);
 }
 
 void ChessGUI::makeEngineMove() {

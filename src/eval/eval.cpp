@@ -1,13 +1,5 @@
 #include "eval.h"
 
-// Pesos das peças em centipawns
-constexpr int P_VAL = 100;
-constexpr int N_VAL = 320;
-constexpr int B_VAL = 330;
-constexpr int R_VAL = 500;
-constexpr int Q_VAL = 900;
-constexpr int K_VAL = 20000;
-
 int Eval::evaluate(const Board& board) {
     // Por hora, simples contagem de material
 
