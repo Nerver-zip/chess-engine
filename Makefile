@@ -2,14 +2,19 @@ CXX      := g++
 CXXFLAGS := -std=c++23 -Wall -Wextra -Wshadow -MMD -MP -fconstexpr-ops-limit=100000000
 LDFLAGS  := -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 
+# ==========================================
 # Diretórios
+# ==========================================
+
 SRC_ROOT := src
-BIN_DIR   := bin
-BUILD_DIR := build
-DEBUG_BIN_DIR := $(BIN_DIR)/debug
+BIN_DIR  := bin
+type ?= release
+
+BUILD_DIR := build/$(type)
+DEBUG_BIN_DIR := $(BIN_DIR)/debug/$(type)
 
 # ==========================================
-#  CORE da engine (sem main.cpp, inclui debuglib)
+# CORE da engine
 # ==========================================
 
 ENGINE_CORE_SRCS := $(shell find $(SRC_ROOT) \
@@ -22,51 +27,49 @@ OBJS := $(ENGINE_CORE_OBJS)
 TARGET := $(BIN_DIR)/chess_engine
 
 # ==========================================
-#  Configuração de Build
+# Configuração de build
 # ==========================================
 
-# Release é o padrão. Para debug: make type=debug
-type ?= release
-
 ifeq ($(type),debug)
-    CXXFLAGS += -g -O0 -DDEBUG
+    CXXFLAGS += -O3 -march=native -flto -DDEBUG
     TARGET := $(TARGET)_debug
 else
     CXXFLAGS += -O3 -march=native -flto -DNDEBUG
 endif
 
 # ==========================================
-#  Regras
+# Regras
 # ==========================================
 
 .PHONY: all clean run directories debug-tool
 
-# Só constrói o engine final se NÃO estiver em modo tool-only
 all: directories $(if $(NO_ENGINE),,$(TARGET))
 
 directories:
 	@mkdir -p $(BIN_DIR)
 	@mkdir -p $(BUILD_DIR)
 
-# Linkagem do frontend final (usa main.cpp)
+# ---------- Link ----------
 $(TARGET): $(OBJS) src/main.cpp
+	@echo "--------------------------------------"
 	@echo "Linking $(TARGET)..."
 	@$(CXX) $(CXXFLAGS) $(OBJS) src/main.cpp -o $(TARGET) $(LDFLAGS)
 	@echo "Build successful -> $(TARGET)"
+	@echo "--------------------------------------"
 
-# Compilação dos objetos do core
+# ---------- Compile ----------
 $(BUILD_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	@echo "Compiling $<..."
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Limpeza
+# ---------- Clean ----------
 clean:
 	@echo "Cleaning up..."
-	@rm -rf $(BUILD_DIR) $(BIN_DIR)
+	@rm -rf build bin
 
 # ==========================================
-# --- MAKERUN (modo tool-only)
+# MAKERUN
 # ==========================================
 
 run:
@@ -89,7 +92,6 @@ debug-tool: directories $(ENGINE_CORE_OBJS)
 	@echo "--------------------------------------"
 	@./$(DEBUG_BIN_DIR)/$(NAME)
 
-# Evita erro por argumento extra
 %:
 	@:
 

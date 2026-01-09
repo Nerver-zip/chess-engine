@@ -54,9 +54,8 @@ Move Search::searchBestMove(const Board& board, int depth) {
         // Invertemos o sinal e trocamos alpha/beta (conceito Negamax)
         int score = -negamax(nextBoard, depth - 1, -beta, -alpha, 1);
 
-        // Debug: Mostra pontuação de cada lance principal
-        // std::cout << "Info: Move " << (int)move.from << "->" << (int)move.to 
-        //           << " Score: " << score << "\n";
+        //Debug::cout << "Info: Move " << (int)move.from << "->" << (int)move.to 
+        //<< " Score: " << score << "\n";
 
         if (score > bestScore) {
             bestScore = score;
@@ -83,6 +82,8 @@ Move Search::searchBestMove(const Board& board, int depth) {
     Debug::cout << "Evaluations: " << stats.evaluations << "\n";
     Debug::cout << "NPS:         " << nps << " nodes/sec\n";
     Debug::cout << "=========================\n";
+
+    //Debug::printKillerTable(killerMoves, 20);
 
     return bestMove;
 }
@@ -156,6 +157,10 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
     std::sort(moves.begin(), moves.end(), [](const Move& a, const Move& b){
         return a.score > b.score;
     });
+        
+    //if (ply > 0 && ply <= 2) { 
+    //    Debug::printMoveList(moves, "Sorted Moves (Ply " + std::to_string(ply) + ")");
+    //}
 
     // =============================================================
     // Recursão e Poda Alpha-Beta

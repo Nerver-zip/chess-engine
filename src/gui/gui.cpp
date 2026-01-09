@@ -250,7 +250,7 @@ void ChessGUI::makeEngineMove() {
         DrawText(" Engine thinking... ", 10, 5, 20, WHITE);
     EndDrawing();
 
-    Move best = Search::searchBestMove(board, 5);
+    Move best = Search::searchBestMove(board, 7);
     
     if (best.from != best.to) { // Se move for válido
         performMove(best);

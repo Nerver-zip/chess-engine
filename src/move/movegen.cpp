@@ -229,7 +229,8 @@ static bool addWinningCaptureIfLegal(const Board& board, std::vector<Move>& move
         int attackerVal = MVV_LVA_VALUES[board.pieceAt(from)];
 
         // Regra simples para SEE:
-        // 1. Se capturamos peça mais valiosa (PxQ), aceitamos direto (Good Capture).
+        // 1. Se capturamos peça mais valiosa (PxQ), aceitamos direto (Good Capture), assumindo que demais trocas podem ser interrompidas
+        // por quem já obteve ganho.
         // 2. Se capturamos igual ou menor (QxP ou PxP), rodamos SEE para ver se não perdemos na troca.
         if (victimVal <= attackerVal) {
              if (!see(board, from, to, victim)) {
@@ -238,8 +239,6 @@ static bool addWinningCaptureIfLegal(const Board& board, std::vector<Move>& move
         }
     }
 
-    // Validação de Legalidade (Xeque)
-    // Deixamos para o final pois é a parte mais pesada (applyMove + ataques)
     Board next = board.applyMove(m);
     next.updateAttackBoards();
 

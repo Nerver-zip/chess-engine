@@ -139,6 +139,94 @@ namespace Debug {
         if (m.flags & QUEEN_CASTLE) std::cout << " (O-O-O)";
         std::cout << "\n";
     }
+
+    // Helper interno para converter casa (0-63) em notação algébrica (e.g., e4)
+    std::string sqToStr(int sq) {
+        if (sq < 0 || sq > 63) return "--";
+        char f = 'a' + (sq % 8);
+        char r = '1' + (sq / 8);
+        return {f, r};
+    }
+
+    std::string moveDebugString(const Move& m) {
+        // Se o movimento for nulo/vazio
+        if (m.from == 0 && m.to == 0) return "(null)";
+
+        std::string s = sqToStr(m.from) + sqToStr(m.to);
+
+        // Adiciona sufixo de promoção se houver
+        if (m.flags & PROMOTION) {
+            switch (m.promotion) {
+                case WQUEEN: case BQUEEN: s += 'q'; break;
+                case WROOK:  case BROOK:  s += 'r'; break;
+                case WBISHOP:case BBISHOP:s += 'b'; break;
+                case WKNIGHT:case BKNIGHT:s += 'n'; break;
+            }
+        }
+
+        // Formatação rica para debug: "e2e4 [Score: 9000] (CAP)"
+        std::string flags = "";
+        if (m.flags & CAPTURE) flags += "C";
+        if (m.flags & PROMOTION) flags += "P";
+        if (m.flags & EN_PASSANT) flags += "E";
+        if (m.flags & KING_CASTLE) flags += "K";
+        if (m.flags & QUEEN_CASTLE) flags += "Q";
+        
+        std::string debugStr = s + " [" + std::to_string(m.score) + "]";
+        if (!flags.empty()) debugStr += "(" + flags + ")";
+
+        return debugStr;
+    }
+
+    void printMoveList(const std::vector<Move>& moves, const std::string& title) {
+        Debug::cout << "=== " << title << " (" << moves.size() << ") ===\n";
+        
+        if (moves.empty()) {
+            Debug::cout << "  (empty)\n";
+            return;
+        }
+
+        // Imprime em colunas ou linha a linha
+        int idx = 0;
+        for (const auto& m : moves) {
+            Debug::cout << std::setw(2) << idx++ << ": " 
+                        << std::left << std::setw(20) << moveDebugString(m);
+            
+            // Quebra linha a cada 3 movimentos para não poluir
+            if (idx % 3 == 0) Debug::cout << "\n";
+        }
+        Debug::cout << "\n==========================\n";
+    }
+
+    void printKillerTable(const Move killerTable[][2], int maxPly) {
+        Debug::cout << "=== Killer Heuristic Table ===\n";
+        bool empty = true;
+
+        for (int ply = 0; ply < maxPly; ++ply) {
+            const Move& k1 = killerTable[ply][0];
+            const Move& k2 = killerTable[ply][1];
+
+            // Só imprime se houver pelo menos um killer move salvo nesse ply
+            bool hasK1 = !(k1.from == 0 && k1.to == 0);
+            bool hasK2 = !(k2.from == 0 && k2.to == 0);
+
+            if (hasK1 || hasK2) {
+                empty = false;
+                Debug::cout << "Ply " << std::setw(2) << ply << ": ";
+                
+                if (hasK1) Debug::cout << "1st: " << moveDebugString(k1) << "   ";
+                else       Debug::cout << "1st: --              ";
+
+                if (hasK2) Debug::cout << "2nd: " << moveDebugString(k2);
+                else       Debug::cout << "2nd: --";
+
+                Debug::cout << "\n";
+            }
+        }
+
+        if (empty) Debug::cout << "  (Table is empty)\n";
+        Debug::cout << "==============================\n";
+    }
 }
 
 #endif  // DEBUG

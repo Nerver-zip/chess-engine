@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include "../board/board.h"
+#include <vector>
 
 #ifdef DEBUG
 
@@ -58,7 +59,29 @@ namespace Debug {
             auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
             return (us > 0) ? us : 1; 
         }
-    };   
+    };
+
+    // ============== HELPER ==================
+    // Converte índice 0-63 para "a1", "h8"
+    std::string sqToStr(int sq);
+
+    // Converte Flags e Peças para texto debugável
+    std::string moveDebugString(const Move& m);
+
+    // ============== PRINT COLLECTIONS ================================
+    
+    /**
+     * @brief Imprime um vetor de movimentos 
+     */
+    void printMoveList(const std::vector<Move>& moves, const std::string& title = "Move List");
+
+    /**
+     * @brief Imprime a tabela de Killer Moves.
+     * Mostra apenas plies que tenham movimentos definidos.
+     * @param killerTable O array C-style [MAX_PLY][2]
+     * @param maxPly Até onde varrer (Max: 64)
+     */
+    void printKillerTable(const Move killerTable[][2], int maxPly);
 }
 
 #else
@@ -68,6 +91,8 @@ namespace Debug {
     inline void printBoard(const Board&) {}
     inline void printAttackMaps(const Board&) {}
     inline void printMove(const Move&) {}
+    inline void printMoveList(const std::vector<Move>&, const std::string& = "") {}
+    inline void printKillerTable(const Move[][2], int) {}    
 
     struct NullStream {
         template<typename T>
@@ -80,10 +105,17 @@ namespace Debug {
 
     inline constexpr NullStream cout{};
     
-    struct Timer {
-        constexpr Timer(const std::string&) {}
+    struct RAII_Timer {
+        constexpr RAII_Timer(const std::string&) {}
     };
-    
+
+    struct Stopwatch {
+        constexpr Stopwatch() noexcept {}
+
+        constexpr uint64_t elapsed_us() const noexcept {
+            return 1;
+        }
+    };
 }
 
 #endif 
