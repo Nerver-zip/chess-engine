@@ -23,6 +23,7 @@ Move Search::searchBestMove(const Board& board, int depth) {
 
     // ====================================
     std::memset(killerMoves, 0, sizeof(killerMoves));
+    std::memset(history, 0, sizeof(history));
    
     // Gera lances legais da raiz
     std::vector<Move> moves = MoveGen::generateMoves(board);
@@ -142,6 +143,7 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
     
     if (ply < MAX_PLY) {
         for (auto& m : moves) {
+            // Ignorar capturas, deixar para MVV-LVA
             if (m.flags & CAPTURE) continue;
             
             // Aplicar bônus se for killer move (quiet move que fez beta cutoff)
@@ -150,6 +152,13 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
             }
             else if (m.from == killerMoves[ply][1].from && m.to == killerMoves[ply][1].to) {
                 m.score = KILLER_2_SCORE;
+            }
+            else {
+                // Se não for captura nem killer, recebe a pontuação do histórico
+                int side = board.whiteToMove ? 0 : 1;
+                m.score = history[side][m.from][m.to];
+                if (m.score > 7000) 
+                    m.score = 7000;
             }
         }
     }
@@ -199,6 +208,19 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
                     killerMoves[ply][1] = killerMoves[ply][0];
                     // Salva o novo lance como Killer 1 (Prioridade máxima)
                     killerMoves[ply][0] = move;
+                }
+                
+                //Atualizar history heuristic
+                int side = board.whiteToMove ? 0 : 1;
+                
+                // Lances que cortam perto da raiz (depth alto) ganham muitos pontos.
+                // Lances nas folhas (depth 1) ganham pouco (1 ponto).
+                int bonus = depth * depth;
+                history[side][move.from][move.to] += bonus;
+                
+                // Capar por segurança e para não ultrapassar killers
+                if (history[side][move.from][move.to] > MAX_HISTORY) {
+                    history[side][move.from][move.to] = MAX_HISTORY;
                 }
             }
             
