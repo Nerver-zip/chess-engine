@@ -19,6 +19,18 @@ struct Move {
     uint8_t promotion;  // Piece (só usado se PROMOTION)
     uint8_t flags;      // MoveFlags
     int score;          // Pontuação MVV-LVA
+    
+    // Ignora flags e score
+    bool operator==(const Move& other) const {
+        return from == other.from && 
+               to == other.to && 
+               promotion == other.promotion;
+    }
+
+    bool operator!=(const Move& other) const {
+        return !(*this == other);
+    }
+
 };
 
 static constexpr int MVV_LVA_VALUES[13] = {
@@ -36,3 +48,32 @@ static constexpr int MVV_LVA_VALUES[13] = {
     900,    // BQUEEN
     20000   // BKING
 };
+
+using PackedMove = uint16_t;
+
+// Compacta: Move (8 bytes) -> PackedMove (2 bytes)
+inline PackedMove packMove(const Move& m) {
+    // Pegamos os 6 bits de from, 6 bits de to, e 4 bits da peça de promoção
+    // O '& 0x3F' garante que só pegamos 6 bits (0-63)
+    // O '& 0xF' garante que só pegamos 4 bits (0-15)
+    return (m.from & 0x3F) | 
+           ((m.to & 0x3F) << 6) | 
+           ((m.promotion & 0xF) << 12);
+}
+
+// Descompacta: PackedMove (2 bytes) -> Move (8 bytes)
+// O lance descompactado é "cru". Ele perde as flags (Capture, Castle, etc).
+// Ele serve apenas para comparação (Matching).
+inline Move unpackMove(PackedMove pm) {
+    Move m;
+    m.from = pm & 0x3F;
+    m.to   = (pm >> 6) & 0x3F;
+    m.promotion = (pm >> 12) & 0xF;
+    
+    // Recuperação parcial de flags (apenas Promotion dá pra saber com certeza)
+    m.flags = (m.promotion != 0) ? PROMOTION : QUIET; 
+    
+    // Zera o resto (não sabemos se é captura ou castle só olhando os bits)
+    m.score = 0; 
+    return m;
+}

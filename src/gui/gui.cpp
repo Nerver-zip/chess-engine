@@ -2,6 +2,8 @@
 #include "../move/movegen.h"
 #include "../search/search.h"
 #include "../debuglib/debug.h"
+#include "../zobrist/zobrist.h"
+#include "../tt/tt.h"
 #include <iostream>
 #include <algorithm>
 
@@ -13,11 +15,14 @@ ChessGUI::ChessGUI() {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT); 
     InitWindow(800, 800, "Chess Engine - Raylib");
     SetTargetFPS(60);
+    
+    Zobrist::init();
+    
+    // TT de 64MB
+    TT.resize(64);
 
-    // Carrega FEN inicial
     board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    // board = Board::fromFEN("6k1/1P6/8/p3p2p/1p6/6b1/5p2/R4K2 w - - 0 1"); // Teste promoção
-
+    
     board.updateAttackBoards();
     legalMoves = MoveGen::generateMoves(board);
     

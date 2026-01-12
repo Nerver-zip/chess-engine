@@ -1,9 +1,9 @@
 #include "search.h"
 #include "../eval/eval.h"
 #include "../debuglib/debug.h"
+#include "../tt/tt.h"
 #include <algorithm>
 #include <cstring>
-#include <iostream>
 
 /**
  * @brief Inicia a busca pelo melhor lance na raiz.
@@ -24,14 +24,28 @@ Move Search::searchBestMove(const Board& board, int depth) {
     // ====================================
     std::memset(killerMoves, 0, sizeof(killerMoves));
     std::memset(history, 0, sizeof(history));
-   
+    TT.newSearch();
+     
     // Gera lances legais da raiz
     std::vector<Move> moves = MoveGen::generateMoves(board);
     
     // Se não há lances legais, o jogo acabou.
-    if (moves.empty()) return {}; 
+    if (moves.empty()) return {};
+
+    Move ttMove = {};
+    TTEntry entry;
+    if (TT.probe(board.hashKey, entry, 0)) {
+        ttMove = unpackMove(entry.move);
+    }
     
-    // Move Ordering MVV-LVA
+    for (auto& m : moves) {
+        if (m == ttMove) {
+            m.score = 30000;
+            break;
+        }
+    }
+    
+    // Move Ordering: Hash Move, depois MVV-LVA
     std::sort(moves.begin(), moves.end(), [](const Move& a, const Move& b){
         return a.score > b.score;
     });
@@ -82,9 +96,9 @@ Move Search::searchBestMove(const Board& board, int depth) {
     Debug::cout << "Total Nodes: " << total_nodes << "\n";
     Debug::cout << "Evaluations: " << stats.evaluations << "\n";
     Debug::cout << "NPS:         " << nps << " nodes/sec\n";
+    Debug::cout << "Evaluation:  " << bestScore << "\n";
+    Debug::cout << "TT Permill:  " << TT.hashfull() << "\n";
     Debug::cout << "=========================\n";
-
-    //Debug::printKillerTable(killerMoves, 20);
 
     return bestMove;
 }
@@ -97,19 +111,45 @@ Move Search::searchBestMove(const Board& board, int depth) {
  */
 int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply) {
     ++Search::stats.nodes;
+    int alphaOrig = alpha;
+    
+    bool inCheck = board.whiteToMove ? (board.whiteKing & board.blackAttacks) 
+                                     : (board.blackKing & board.whiteAttacks);
+    // Se em xeque, estende a busca
+    if (inCheck) {
+        depth++;
+    }
+
     if (depth == 0) {
         ++Search::stats.evaluations;
         return quiescence(board, alpha, beta);
+    }
+    
+    // Transposition Table Probe
+    TTEntry ttEntry;
+    Move ttMove = {};
+    
+    if (TT.probe(board.hashKey, ttEntry, ply)) {
+        ttMove = unpackMove(ttEntry.move);
+
+        // TT Cutoff (Só se depth for suficiente)
+        if (ttEntry.depth >= depth) {
+            if (ttEntry.flag == TT_EXACT) {
+                return ttEntry.score;
+            }
+            if (ttEntry.flag == TT_ALPHA && ttEntry.score <= alpha){
+                return ttEntry.score;
+            }             
+            if (ttEntry.flag == TT_BETA  && ttEntry.score >= beta){
+                return ttEntry.score;
+            } 
+        }
     }
 
     std::vector<Move> moves = MoveGen::generateMoves(board);
 
     if (moves.empty()) {
         // Se não há lances legais, ou é Mate ou é Afogamento (Stalemate).
-        bool inCheck = board.whiteToMove 
-                       ? (board.whiteKing & board.blackAttacks)
-                       : (board.blackKing & board.whiteAttacks);
-        
         if (inCheck) {
             // Xeque-mate!
             // Retornamos -MATE + ply. 
@@ -141,13 +181,21 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
     // Antes de ordenar, verificamos se algum lance gerado é um Killer Move desse ply.
     // Se for, damos um score alto para ele ser testado logo após as capturas.
     
+    
+
     if (ply < MAX_PLY) {
         for (auto& m : moves) {
+            // Bonus grande se o movimento veio da TT
+            if(m == ttMove) {
+                m.score = 30000;
+                continue;
+            }
+            
             // Ignorar capturas, deixar para MVV-LVA
             if (m.flags & CAPTURE) continue;
             
             // Aplicar bônus se for killer move (quiet move que fez beta cutoff)
-            if (m.from == killerMoves[ply][0].from && m.to == killerMoves[ply][0].to) {
+            else if (m.from == killerMoves[ply][0].from && m.to == killerMoves[ply][0].to) {
                 m.score = KILLER_1_SCORE;
             }
             else if (m.from == killerMoves[ply][1].from && m.to == killerMoves[ply][1].to) {
@@ -175,7 +223,7 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
     // Recursão e Poda Alpha-Beta
     // =============================================================
     int bestVal = -INF;
-
+    Move bestMove = {};
     for (const auto& move : moves) {
         Board nextBoard = board.applyMove(move);
         nextBoard.updateAttackBoards(); // Prepara para o próximo nível
@@ -189,6 +237,7 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
 
         if (score > bestVal) {
             bestVal = score;
+            bestMove = move;
         }
 
         // Atualiza o limite inferior (Alpha)
@@ -227,6 +276,16 @@ int Search::negamax(const Board& board, int depth, int alpha, int beta, int ply)
             break; 
         }
     }
+
+    TTFlag flag = TT_EXACT;
+    // Não conseguimos melhorar o alpha original (Fail Low)
+    if (bestVal <= alphaOrig) flag = TT_ALPHA;
+    // Causamos um corte (Fail High)
+    else if (bestVal >= beta) flag = TT_BETA;
+    
+    // Se não entrou nos ifs acima, é TT_EXACT (bestVal entre alphaOrig e beta)
+    // Grava na tabela
+    TT.store(board.hashKey, depth, bestVal, flag, bestMove, ply);
 
     return bestVal;
 }

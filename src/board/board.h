@@ -3,6 +3,7 @@
 #include "piece.h"
 #include "../move/move.h"
 #include "bitboard.h"
+#include "../zobrist/zobrist.h"
 
 struct Board {
 
@@ -25,6 +26,7 @@ struct Board {
     bool whiteToMove;
     uint8_t castlingRights;   // bits: 0001 WK, 0010 WQ, 0100 BK, 1000 BQ
     int8_t enPassantSquare;   // -1 se não houver
+    uint64_t hashKey = 0;     // Hash da posição (Zobrist)
     
     // Mapa de ataque, casas controladas por cada peça
     int64_t whiteAttacks;
@@ -101,7 +103,11 @@ struct Board {
 
     static Board fromPGN(const char* pgn);
     
-
+    /**
+     * @brief Calcula do zero o hash da posição, depois ela é sempre atualizada incrementalmente
+     * em applyMove()
+     */
+    void computeHash();
     
     /**
      * @brief Essa função constrói do zero um mapa de ataque que auxilia na geração
