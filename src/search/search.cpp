@@ -12,7 +12,7 @@
  * Em vez de chamar searchBestMove(depth 5) direto, chamar para 1, depois 2, até 5.
  * Isso ajuda muito no ordenamento de movimentos e gerenciamento de tempo.
  */
-Move Search::searchBestMove(const Board& board, int depth) {
+Move Search::searchBestMove(const Board& board, int maxDepth) {
     // ============= DEBUG ================
     Search::stats.nodes  = 0;
     Search::stats.qnodes = 0;
@@ -26,61 +26,83 @@ Move Search::searchBestMove(const Board& board, int depth) {
     std::memset(history, 0, sizeof(history));
     TT.newSearch();
      
-    // Gera lances legais da raiz
-    std::vector<Move> moves = MoveGen::generateMoves(board);
-    
-    // Se não há lances legais, o jogo acabou.
-    if (moves.empty()) return {};
+    Move globalBestMove = {};
+    int globalBestScore = -INF;
 
-    Move ttMove = {};
-    TTEntry entry;
-    if (TT.probe(board.hashKey, entry, 0)) {
-        ttMove = unpackMove(entry.move);
-    }
-    
-    for (auto& m : moves) {
-        if (m == ttMove) {
-            m.score = 30000;
-            break;
-        }
-    }
-    
-    // Move Ordering: Hash Move, depois MVV-LVA
-    std::sort(moves.begin(), moves.end(), [](const Move& a, const Move& b){
-        return a.score > b.score;
-    });
-    
-    Move bestMove;
-    int bestScore = -INF;
-    
-    int alpha = -INF;
-    int beta = INF;
-
-    // Itera sobre todos os movimentos possíveis da raiz
-    for (const auto& move : moves) {
-        Board nextBoard = board.applyMove(move);
+    // === ITERATIVE DEEPENING ===
+    // Vai de 1 até a profundidade máxima pedida
+    for (int currentDepth = 1; currentDepth <= maxDepth; ++currentDepth) {
         
-        // O MoveGen da próxima recursão precisa disso para saber se o rei está em xeque
-        // e para filtrar lances ilegais do oponente.
-        nextBoard.updateAttackBoards();
+        // Janela de Aspiração (Resetamos Alpha/Beta a cada nova profundidade)
+        int alpha = -INF;
+        int beta = INF;
 
-        // Chama o Negamax recursivo
-        // ply = 1 (estamos a 1 passo da raiz)
-        // Invertemos o sinal e trocamos alpha/beta (conceito Negamax)
-        int score = -negamax(nextBoard, depth - 1, -beta, -alpha, 1);
+        // Geramos os movimentos novamente a cada iteração
+        // Isso é necessário porque a ordenação muda conforme a TT é preenchida
+        std::vector<Move> moves = MoveGen::generateMoves(board);
+        if (moves.empty()) return {};
 
-        //Debug::cout << "Info: Move " << (int)move.from << "->" << (int)move.to 
-        //<< " Score: " << score << "\n";
-
-        if (score > bestScore) {
-            bestScore = score;
-            bestMove = move;
+        // Descobre o Hash Move dessa iteração (vindo da iteração anterior)
+        Move ttMove = {};
+        TTEntry entry;
+        if (TT.probe(board.hashKey, entry, 0)) {
+            ttMove = unpackMove(entry.move);
         }
 
-        // Atualiza Alpha (limite inferior da nossa pontuação)
-        if (score > alpha) {
-            alpha = score;
+        // Aplica bônus no Hash Move
+        for (auto& m : moves) {
+            if (m == ttMove) {
+                m.score = 30000; // Prioridade máxima
+                break;
+            }
         }
+
+        // Ordena (Agora o melhor lance da depth anterior será o primeiro)
+        std::sort(moves.begin(), moves.end(), [](const Move& a, const Move& b){
+            return a.score > b.score;
+        });
+
+        // Root Search (Busca na Raiz)
+        Move iterationBestMove = {};
+        int iterationBestScore = -INF;
+        
+        for (const auto& move : moves) {
+            Board nextBoard = board.applyMove(move);
+            nextBoard.updateAttackBoards();
+
+            int score = -negamax(nextBoard, currentDepth - 1, -beta, -alpha, 1);
+
+            if (score > iterationBestScore) {
+                iterationBestScore = score;
+                iterationBestMove = move;
+            }
+
+            if (score > alpha) {
+                alpha = score;
+                // Encontramos um novo melhor lance (PV), gravamos na TT imediatamente
+                // para que, se pararmos o tempo agora, a informação esteja salva.
+                // Quando implementar limite de tempo, parar depois desse passo
+                TT.store(board.hashKey, currentDepth, score, TT_EXACT, move, 0);
+            }
+        }
+
+        // Atualiza o melhor lance global
+        globalBestMove = iterationBestMove;
+        globalBestScore = iterationBestScore;
+
+        // Stats da iteração 
+        // Aqui printa o "pensamento" da engine
+        uint64_t timeMs = stopwatch.elapsed_us();
+        if (timeMs == 0) timeMs = 1; 
+        
+        uint64_t totalNodes = stats.nodes + stats.qnodes;
+        uint64_t nps = (totalNodes * 1000) / timeMs;
+
+        Debug::cout << "info depth " << currentDepth 
+                    << " score " << globalBestScore 
+                    << " nodes " << totalNodes 
+                    << " nps " << nps 
+                    << " pv " << (int)globalBestMove.from << "->" << (int)globalBestMove.to << "\n";
     }
     
     uint64_t us = stopwatch.elapsed_us();
@@ -89,18 +111,18 @@ Move Search::searchBestMove(const Board& board, int depth) {
     uint64_t nps = (total_nodes * 1000000) / us;
 
     Debug::cout << "\n=== Search Statistics ===\n";
-    Debug::cout << "Depth:       " << depth << "\n";
+    Debug::cout << "Depth:       " << maxDepth << "\n";
     Debug::cout << "Time:        " << (us / 1000.0) << " ms\n";
     Debug::cout << "Nodes:       " << stats.nodes << " (Interior)\n";
     Debug::cout << "QNodes:      " << stats.qnodes << " (Quiescence)\n";
     Debug::cout << "Total Nodes: " << total_nodes << "\n";
     Debug::cout << "Evaluations: " << stats.evaluations << "\n";
     Debug::cout << "NPS:         " << nps << " nodes/sec\n";
-    Debug::cout << "Evaluation:  " << bestScore << "\n";
+    Debug::cout << "Evaluation:  " << globalBestScore << "\n";
     Debug::cout << "TT Permill:  " << TT.hashfull() << "\n";
     Debug::cout << "=========================\n";
 
-    return bestMove;
+    return globalBestMove;
 }
 
 /**

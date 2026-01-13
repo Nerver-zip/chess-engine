@@ -18,8 +18,8 @@ ChessGUI::ChessGUI() {
     
     Zobrist::init();
     
-    // TT de 64MB
-    TT.resize(64);
+    // TT de 512MB
+    TT.resize(512);
 
     board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     
@@ -255,7 +255,7 @@ void ChessGUI::makeEngineMove() {
         DrawText(" Engine thinking... ", 10, 5, 20, WHITE);
     EndDrawing();
 
-    Move best = Search::searchBestMove(board, 7);
+    Move best = Search::searchBestMove(board, 8);
     
     if (best.from != best.to) { // Se move for válido
         performMove(best);
