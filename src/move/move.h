@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <string>
 
 #define OFFSET 10000
 
@@ -77,3 +78,11 @@ inline Move unpackMove(PackedMove pm) {
     m.score = 0; 
     return m;
 }
+
+struct Board;
+
+// Converte para notação simples (ex: "e2e4", "a7a8q")
+std::string moveToUCI(const Move& m);
+
+// Converte para notação Algébrica Padrão
+std::string moveToSAN(const Move& m, const Board& board);

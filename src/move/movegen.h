@@ -3,6 +3,7 @@
 #include "../board/board.h"
 #include "../board/attack.h"
 #include "../board/bitboard.h"
+#include "../board/piece.h"
 #include "move.h"
 
 class MoveGen {
@@ -10,10 +11,15 @@ public:
     
     // Para busca genérica
     static std::vector<Move> generateMoves(const Board& board);
+    
+    // Para desambiguação na notação clássica
+    static std::vector<Move> generatePieceMoves(const Board& board, Piece piece);
 
     // Para Q-search
     static std::vector<Move> generateWinningMoves(const Board& board);
-
+    
+    // Otimizado para gerar respostas a xeques
+    static std::vector<Move> generateCheckResponses(const Board& board);
 private:
 
     /**
@@ -283,5 +289,10 @@ private:
         }
     }
 
-    static bool isOwnPiece(const Board& board, int sq, bool white);
+    inline static uint64_t ownPieces(bool white, const Board& b) {
+        return white ? b.whitePieces() : b.blackPieces();
+    }
+    inline static uint64_t enemyPieces(bool white, const Board& b) {
+        return white ? b.blackPieces() : b.whitePieces();
+    }
 };

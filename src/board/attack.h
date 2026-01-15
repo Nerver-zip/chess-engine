@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <array>
+#include <cmath>
 #include "bitboard.h"
 #include "magic.h"
 
@@ -409,3 +410,52 @@ inline uint64_t rookAttacks(int sq, uint64_t occAll) {
 inline uint64_t queenAttacks(int sq, uint64_t occ) {
     return bishopAttacks(sq, occ) | rookAttacks(sq, occ);
 }
+
+/* ============================================================
+                         BETWEEN MASK
+   ============================================================ */
+
+constexpr uint64_t squaresBetween(int a, int b)
+{
+    if (a == b) return 0;
+
+    int af = a & 7, ar = a >> 3;
+    int bf = b & 7, br = b >> 3;
+
+    int df = bf - af;
+    int dr = br - ar;
+
+    int step = 0;
+
+    if (df == 0) step = (dr > 0 ? 8 : -8);
+    else if (dr == 0) step = (df > 0 ? 1 : -1);
+    else if (df == dr) step = (df > 0 ? 9 : -9);
+    else if (df == -dr) step = (dr > 0 ? 7 : -7);
+    else return 0;
+
+    int dist = std::max(std::abs(df), std::abs(dr));
+
+    uint64_t mask = 0;
+    int s = a;
+
+    for (int i = 1; i < dist; ++i)
+    {
+        s += step;
+        mask |= 1ULL << s;
+    }
+
+    return mask;
+}
+
+constexpr auto generateBetweenTable()
+{
+    std::array<std::array<uint64_t,64>,64> t{};
+
+    for (int a = 0; a < 64; ++a)
+        for (int b = 0; b < 64; ++b)
+            t[a][b] = squaresBetween(a,b);
+
+    return t;
+}
+
+constexpr auto BETWEEN = generateBetweenTable();

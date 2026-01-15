@@ -277,6 +277,26 @@ std::vector<Move> MoveGen::generateMoves(const Board& board)
     return moves;
 }
 
+std::vector<Move> MoveGen::generatePieceMoves(const Board &board, Piece piece){
+    std::vector<Move> moves;
+    moves.reserve(16);
+
+    if(piece == WPAWN || piece == BPAWN)
+        generatePawnMoves(board, moves, NormalValidator{});
+    else if(piece == WKNIGHT || piece == BKNIGHT)
+        generateKnightMoves(board, moves, NormalValidator{});
+    else if(piece == WBISHOP || piece == BBISHOP)
+        generateBishopMoves(board, moves, NormalValidator{});
+    else if(piece == WROOK || piece == BROOK)
+        generateRookMoves(board, moves, NormalValidator{});
+    else if(piece == WQUEEN || piece == BQUEEN)
+        generateQueenMoves(board, moves, NormalValidator{});
+    else
+        generateKingMoves(board, moves, NormalValidator{});
+    
+    return moves;
+}
+
 std::vector<Move> MoveGen::generateWinningMoves(const Board& board)
 {
     std::vector<Move> moves;
@@ -285,8 +305,84 @@ std::vector<Move> MoveGen::generateWinningMoves(const Board& board)
     return moves;
 }
 
-// No momento usando mask ~ownPieces nas funções acima)
-bool MoveGen::isOwnPiece(const Board& board, int sq, bool white) {
-    uint64_t own = white ? board.whitePieces() : board.blackPieces();
-    return (BB(sq) & own) != 0;
+
+std::vector<Move> MoveGen::generateCheckResponses(const Board& board)
+{
+    std::vector<Move> moves;
+    moves.reserve(32);
+
+    const bool white = board.whiteToMove;
+    const uint64_t own  = ownPieces(white, board);
+    const uint64_t all  = board.allPieces();
+
+    const int kingSq = __builtin_ctzll(white ? board.whiteKing : board.blackKing);
+
+    uint64_t checkers = board.attackersTo(kingSq, all) & enemyPieces(white, board);
+
+    if (!checkers)
+        return generateMoves(board);
+
+    // ============================================================
+    // DOUBLE CHECK → só rei
+    // ============================================================
+    if (__builtin_popcountll(checkers) > 1) {
+        std::vector<Move> kingOnly;
+        generateKingMoves(board, kingOnly, NormalValidator{});
+        return kingOnly;
+    }
+
+    // ============================================================
+    // SINGLE CHECK
+    // ============================================================
+    const int checkerSq = __builtin_ctzll(checkers);
+    const int checker   = board.pieceAt(checkerSq);
+
+    uint64_t blockMask = 0;
+
+    if (checker >= WBISHOP) // bishop, rook, queen
+        blockMask = squaresBetween(kingSq, checkerSq);
+
+    // ----------------- KING -----------------
+    generateKingMoves(board, moves, NormalValidator{});
+
+    // ----------------- CAPTURE CHECKER -----------------
+    uint64_t attackers = board.attackersTo(checkerSq, all) & own;
+
+    while (attackers) {
+        int from = __builtin_ctzll(attackers);
+        attackers &= attackers - 1;
+
+        bool promo = (board.pieceAt(from) == (white ? WPAWN : BPAWN)) &&
+                     (checkerSq / 8 == (white ? 7 : 0));
+
+        if (promo) {
+            NormalValidator{}(board, moves, from, checkerSq, CAPTURE|PROMOTION, white ? WQUEEN : BQUEEN);
+            NormalValidator{}(board, moves, from, checkerSq, CAPTURE|PROMOTION, white ? WROOK  : BROOK);
+            NormalValidator{}(board, moves, from, checkerSq, CAPTURE|PROMOTION, white ? WBISHOP: BBISHOP);
+            NormalValidator{}(board, moves, from, checkerSq, CAPTURE|PROMOTION, white ? WKNIGHT: BKNIGHT);
+        } else {
+            NormalValidator{}(board, moves, from, checkerSq, CAPTURE);
+        }
+    }
+
+    // ----------------- BLOCK RAY -----------------
+    if (blockMask) {
+        uint64_t blockers = blockMask & ~all;
+
+        while (blockers) {
+            int to = __builtin_ctzll(blockers);
+            blockers &= blockers - 1;
+
+            uint64_t cand = board.attackersTo(to, all) & own;
+
+            while (cand) {
+                int from = __builtin_ctzll(cand);
+                cand &= cand - 1;
+                NormalValidator{}(board, moves, from, to, QUIET);
+            }
+        }
+    }
+
+    return moves;
 }
+

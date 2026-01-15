@@ -1,5 +1,5 @@
 CXX      := g++
-CXXFLAGS := -std=c++23 -Wall -Wextra -Wshadow -MMD -MP -fconstexpr-ops-limit=100000000
+CXXFLAGS := -std=c++23 -Wall -Wextra -Wshadow -MMD -MP -pthread -fconstexpr-ops-limit=100000000
 LDFLAGS  := -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 
 # ==========================================
@@ -31,10 +31,10 @@ TARGET := $(BIN_DIR)/chess_engine
 # ==========================================
 
 ifeq ($(type),debug)
-    CXXFLAGS += -O3 -march=native -flto -DDEBUG
+    CXXFLAGS += -O3 -march=native -flto=auto -DDEBUG
     TARGET := $(TARGET)_debug
 else
-    CXXFLAGS += -O3 -march=native -flto -DNDEBUG
+    CXXFLAGS += -O3 -march=native -flto=auto -DNDEBUG
 endif
 
 # ==========================================
