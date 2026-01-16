@@ -1,11 +1,13 @@
-# Capy Chess Engine ♟️
+<h1>
+   <img src="assets/capy.png" width="150" align="middle" />
+   Capy Chess Engine ♟️
+</h1>
 
 ![Status](https://img.shields.io/badge/Status-Active-success)
 ![Language](https://img.shields.io/badge/Language-C%2B%2B23-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 **Capy Chess Engine** is a chess engine and GUI built in **C++23**, designed to explore chess heuristics, search algorithms and bitboard-based state representation. It features a custom graphical interface powered by **Raylib**, providing a seamless experience for playing, analyzing, and managing chess games.
-
 The project emphasizes code clarity and modern C++ practices making it an excellent resource for understanding chess programming fundamentals.
 
 ---
