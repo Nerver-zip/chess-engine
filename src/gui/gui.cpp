@@ -7,6 +7,11 @@
 #include <algorithm>
 #include <string>
 #include <sstream>
+#include <filesystem>
+#include <iomanip>
+#include <bit>
+
+namespace fs = std::filesystem;
 
 const Color LIGHT_SQUARE = {235, 236, 208, 255};
 const Color DARK_SQUARE  = {119, 149, 86, 255};
@@ -123,6 +128,8 @@ void ChessGUI::resetGame() {
     isDragging = false;
     sourceSquare = -1;
     
+    isReplayMode = false;
+
     // Reseta flags da thread
     isEngineThinking = false;
     engineMoveReady = false;
@@ -332,7 +339,8 @@ void ChessGUI::updateLogic() {
     int mouseSq = getSquareFromMouse();
     targetSquare = mouseSq;
 
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    // Se estiver em modo Replay, não permite interação com peças
+    if (!isReplayMode && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         if (mouseSq != -1) {
             Piece p = board.pieceAt(mouseSq);
             
@@ -349,7 +357,7 @@ void ChessGUI::updateLogic() {
 
     if (isDragging) dragPos = GetMousePosition();
 
-    if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && isDragging) {
+    if (!isReplayMode && IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && isDragging) {
         isDragging = false;
 
         // Validação: Só move se não for a vez da engine e ela não estiver pensando
@@ -550,9 +558,25 @@ void ChessGUI::drawPanels() {
     // ---------------------------------------------------------
     DrawRectangleRec(leftPanelRect, Fade(BLACK, 0.2f));
 
+    // Botão de Voltar/Menu no Topo
+    float menuBtnH = 40;
+    Rectangle menuBtnRect = { leftPanelRect.x + 10, leftPanelRect.y + 10, leftPanelRect.width - 20, menuBtnH };
+    
+    const char* menuLabel = isReplayMode ? "Back to Saved" : "Back to Menu";
+    if (drawButton(menuBtnRect, menuLabel)) {
+        if (isReplayMode) {
+            currentState = STATE_MENU_SAVED;
+        } else {
+            currentState = STATE_MENU_MAIN;
+        }
+    }
+
+    // Ajusta o início do conteúdo do jogador para baixo do botão
+    float topContentY = leftPanelRect.y + 10 + menuBtnH + 20;
+
     // --- Jogador do topo (Oponente) ---
     if (topPlayer) {
-        float topY = leftPanelRect.y + padding;
+        float topY = topContentY;
 
         // Avatar
         DrawTexturePro(topPlayer->avatar, 
@@ -595,17 +619,24 @@ void ChessGUI::drawPanels() {
         float navH = 50;
         float navY = rightPanelRect.y + rightPanelRect.height - navH;
         
-        // Área da Toolbar (Novos Botões: Resign, Copy, Flip)
+        // Área da Toolbar
         float toolbarH = 40; 
-        float toolbarY = navY - toolbarH - 5; // 5px de padding acima da navegação
+        float toolbarY = navY - toolbarH - 5; 
 
-        // Desenha a Toolbar (4 botões em linha)
-        // Resign | Copy FEN | Copy PGN | Flip
-        const char* toolLabels[] = { "Resign", "Copy FEN", "Copy PGN", "Flip" };
+        // Define botões da toolbar (Abaixo da lista de moves)
+        std::vector<std::string> tools;
+        if (isReplayMode) {
+            // No replay: Só Copy e Flip
+            tools = { "Copy FEN", "Copy PGN", "Flip" };
+        } else {
+            // Em jogo: Resign, Copy FEN, Copy PGN, Flip
+            tools = { "Resign", "Copy FEN", "Copy PGN", "Flip" }; 
+        }
+
         float btnMargin = 5;
-        float btnW = (rightPanelRect.width - (btnMargin * 5)) / 4.0f; 
+        float btnW = (rightPanelRect.width - (btnMargin * (tools.size() + 1))) / tools.size(); 
         
-        for(int i=0; i<4; i++) {
+        for(size_t i=0; i<tools.size(); i++) {
             Rectangle btnRect = { 
                 rightPanelRect.x + btnMargin + (i * (btnW + btnMargin)), 
                 toolbarY, 
@@ -613,27 +644,38 @@ void ChessGUI::drawPanels() {
                 30
             };
             
-            bool clicked = drawButton(btnRect, toolLabels[i]);
+            bool clicked = drawButton(btnRect, tools[i].c_str());
             
-            // Lógica dos Botões
             if (clicked) {
-                if (i == 0) { // RESIGN
-                    if (!isGameOver) {
-                        isGameOver = true;
-                        gameReason = REASON_RESIGNATION;
-                        if (userIsWhite) gameResult = RESULT_BLACK_WINS;
-                        else gameResult = RESULT_WHITE_WINS;
-                        
-                        showGameOverPopup = true;
+                std::string action = tools[i];
+                
+                if (action == "Resign") {
+                    if (!isGameOver && !isReplayMode) {
+                        activePopup = POPUP_CONFIRM;
+                        popupJustOpened = true;
+                        popupMessage = "Are you sure?";
+                        popupAction = [this]() {
+                            this->isGameOver = true;
+                            this->gameReason = REASON_RESIGNATION;
+                            if (this->userIsWhite) this->gameResult = RESULT_BLACK_WINS;
+                            else this->gameResult = RESULT_WHITE_WINS;
+                            this->showGameOverPopup = true;
+                        };
                     }
                 }
-                else if (i == 1) { // COPY FEN
+                else if (action == "Copy FEN") {
                     SetClipboardText(generateFEN(true).c_str());
+                    activePopup = POPUP_INFO;
+                    popupJustOpened = true;
+                    popupMessage = "Copied FEN to clipboard";
                 }
-                else if (i == 2) { // COPY PGN
+                else if (action == "Copy PGN") {
                     SetClipboardText(generatePGN().c_str());
+                    activePopup = POPUP_INFO;
+                    popupJustOpened = true;
+                    popupMessage = "Copied PGN to clipboard";
                 }
-                else if (i == 3) { // FLIP
+                else if (action == "Flip") {
                     isFlipped = !isFlipped;
                 }
             }
@@ -855,6 +897,20 @@ void ChessGUI::drawPieces() {
 // =========================================================
 
 bool ChessGUI::drawButton(Rectangle rect, const char* text) {
+    // Se houver um popup ativo e NÃO estivermos desenhando o popup agora,
+    // bloqueia a interação com os botões de fundo.
+    if (activePopup != POPUP_NONE && !drawingPopup) {
+        // Apenas desenha visualmente desativado/escurecido
+        DrawRectangleRec(rect, Fade(BUTTON_COLOR, 0.5f));
+        DrawRectangleLinesEx(rect, 1, Fade(BLACK, 0.5f));
+        
+        int fontSize = std::min(30, (int)(rect.height * 0.5f));
+        int textW = MeasureText(text, fontSize);
+        DrawText(text, rect.x + (rect.width - textW) / 2, rect.y + (rect.height - fontSize) / 2, fontSize, Fade(WHITE, 0.5f));
+        
+        return false;
+    }
+
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, rect);
     bool clicked = false;
@@ -909,9 +965,17 @@ void ChessGUI::drawMenu() {
         if (drawButton({centerX, startY, btnW, btnH}, "PLAY")) {
             currentState = STATE_MENU_MODE;
         }
-        if (drawButton({centerX, startY + 80, btnW, btnH}, "EXIT")) {
+        if (drawButton({centerX, startY + 80, btnW, btnH}, "SAVED GAMES")) {
+            currentState = STATE_MENU_SAVED;
+            loadSavedGamesList();
+            savedGamesPage = 0;
+        }
+        if (drawButton({centerX, startY + 160, btnW, btnH}, "EXIT")) {
             shouldClose = true;
         }
+    }
+    else if (currentState == STATE_MENU_SAVED) {
+        drawSavedGamesMenu();
     }
     else if (currentState == STATE_MENU_MODE) {
         DrawText("Game mode:", centerX, startY - 40, 20, LIGHTGRAY);
@@ -1025,8 +1089,11 @@ void ChessGUI::drawGameOverPopup() {
 
     // Botão 2: Save
     if (drawButton({rect.x + padding + btnW + btnSpacing, btnY, btnW, btnH}, "Save")) {
-        // Copiar FEN para clipboard como "Save" temporário
-        SetClipboardText(generateFEN().c_str());
+        saveGameToFile();
+        activePopup = POPUP_INFO;
+        popupJustOpened = true;
+        popupMessage = "Game saved!";
+        showGameOverPopup = false; 
     }
     
     // Botão 3: Menu
@@ -1075,8 +1142,73 @@ void ChessGUI::draw() {
     if (currentState != STATE_GAME && !showGameOverPopup) {
         drawMenu();
     }
+    
+    // Desenha Popup Genérico por cima de TUDO
+    if (activePopup != POPUP_NONE) {
+        drawGenericPopup();
+    }
 
     EndDrawing();
+}
+
+void ChessGUI::drawGenericPopup() {
+    drawingPopup = true; // Permite que drawButton funcione aqui dentro
+
+    int sw = GetScreenWidth();
+    int sh = GetScreenHeight();
+
+    // Overlay
+    DrawRectangle(0, 0, sw, sh, Fade(BLACK, 0.6f));
+
+    // Janela
+    float w = 400;
+    float h = 200;
+    Rectangle rect = { (sw - w)/2, (sh - h)/2, w, h };
+
+    DrawRectangleRec(rect, { 55, 53, 50, 255 });
+    DrawRectangleLinesEx(rect, 1, WHITE);
+
+    // Mensagem
+    int fontSize = 24;
+    int textW = MeasureText(popupMessage.c_str(), fontSize);
+    DrawText(popupMessage.c_str(), rect.x + (w - textW)/2, rect.y + 60, fontSize, WHITE);
+
+    // Botões
+    float btnW = 100;
+    float btnH = 40;
+    float btnY = rect.y + h - 70;
+
+    // Se acabou de abrir, não processamos cliques neste frame para evitar "double click"
+    // do evento que abriu o popup
+    bool ignoreInput = popupJustOpened;
+    popupJustOpened = false;
+
+    if (activePopup == POPUP_INFO) {
+        // Botão OK
+        bool clicked = drawButton({rect.x + (w - btnW)/2, btnY, btnW, btnH}, "OK");
+        if (!ignoreInput && clicked) {
+            activePopup = POPUP_NONE;
+        }
+    }
+    else if (activePopup == POPUP_CONFIRM) {
+        // Botão YES / CANCEL
+        float gap = 20;
+        float totalW = btnW * 2 + gap;
+        float startX = rect.x + (w - totalW)/2;
+
+        bool yesClicked = drawButton({startX, btnY, btnW, btnH}, "Yes");
+        if (!ignoreInput && yesClicked) {
+            if (popupAction) popupAction();
+            activePopup = POPUP_NONE;
+        }
+
+        bool cancelClicked = drawButton({startX + btnW + gap, btnY, btnW, btnH}, "Cancel");
+        if (!ignoreInput && cancelClicked) {
+            activePopup = POPUP_NONE;
+        }
+    }
+
+    drawingPopup = false;
 }
 
 std::string squareToAlgebraic(int sq) {
@@ -1207,47 +1339,36 @@ std::string ChessGUI::generatePGN() {
 }
 
 bool ChessGUI::checkInsufficientMaterial() {
-    // Contagem de peças
-    int wPawn=0, wKnight=0, wBishop=0, wRook=0, wQueen=0;
-    int bPawn=0, bKnight=0, bBishop=0, bRook=0, bQueen=0;
+    uint64_t heavyPieces = board.whitePawns | board.blackPawns | 
+                           board.whiteRooks | board.blackRooks | 
+                           board.whiteQueens | board.blackQueens;
+                           
+    if (std::popcount(heavyPieces) > 0) return false;
 
-    // Varre o tabuleiro (ou use os bitboards popcount se tiver acesso)
-    // Usando loop simples para compatibilidade com o código atual
-    for(int i=0; i<64; i++) {
-        Piece p = board.pieceAt(i);
-        if (p == WPAWN) wPawn++; else if (p == WKNIGHT) wKnight++;
-        else if (p == WBISHOP) wBishop++; else if (p == WROOK) wRook++;
-        else if (p == WQUEEN) wQueen++;
-        else if (p == BPAWN) bPawn++; else if (p == BKNIGHT) bKnight++;
-        else if (p == BBISHOP) bBishop++; else if (p == BROOK) bRook++;
-        else if (p == BQUEEN) bQueen++;
-    }
+    int wKnight = std::popcount(board.whiteKnights);
+    int wBishop = std::popcount(board.whiteBishops);
+    int bKnight = std::popcount(board.blackKnights);
+    int bBishop = std::popcount(board.blackBishops);
 
-    // 1. Se tem Peões, Torres ou Damas -> Tem material suficiente
-    if (wPawn+wRook+wQueen+bPawn+bRook+bQueen > 0) return false;
-
-    // O que sobrou: Reis + Cavalos + Bispos
     int wMinor = wKnight + wBishop;
     int bMinor = bKnight + bBishop;
 
     // Rei vs Rei
     if (wMinor == 0 && bMinor == 0) return true;
 
-    // Rei + Menor vs Rei (Impossível mate forçado)
+    // Rei + Menor vs Rei
     if ((wMinor == 1 && bMinor == 0) || (wMinor == 0 && bMinor == 1)) return true;
 
-    // Rei + 2 Cavalos vs Rei (Impossível mate forçado sem ajuda do oponente)
-    // Nota: K+NN vs K+P NÃO é empate. Mas aqui já filtramos peões.
+    // Rei + 2 Cavalos vs Rei
     if ((wKnight == 2 && wBishop == 0 && bMinor == 0) || 
         (bKnight == 2 && bBishop == 0 && wMinor == 0)) return true;
         
-    // Bispos de cores opostas? (K+B vs K+B) -> Geralmente empate, mas engines jogam.
-    // Vamos ficar no básico pedido.
-
     return false;
 }
 
 void ChessGUI::checkGameOver() {
+    if (isReplayMode) return;
+
     if (checkInsufficientMaterial()) {
         isGameOver = true;
         gameResult = RESULT_DRAW;
@@ -1292,4 +1413,350 @@ void ChessGUI::checkGameOver() {
         timerActive = true;
         return;
     }
+}
+
+// =========================================================
+//  Saved Games
+// =========================================================
+
+void ChessGUI::saveGameToFile() {
+    // Garante que a pasta existe
+    if (!fs::exists("local")) {
+        fs::create_directory("local");
+    }
+
+    // Gera nome do arquivo: game_YYYY-MM-DD_HH-MM-SS.pgn
+    auto t = std::time(nullptr);
+    auto tm = *std::localtime(&t);
+    std::stringstream ssFileName;
+    ssFileName << "local/game_" 
+               << std::put_time(&tm, "%Y-%m-%d_%H-%M-%S") 
+               << ".pgn";
+
+    std::ofstream outFile(ssFileName.str());
+    if (outFile.is_open()) {
+        std::string pgn = generatePGN();
+        
+        outFile << pgn;
+        outFile << "\n\n{FinalFEN: " << generateFEN(true) << "}";
+        
+        // Serializa movimentos brutos para permitir replay sem parser SAN complexo
+        outFile << "\n{RawMoves:";
+        for (const auto& m : flatMoveHistory) {
+            std::string s = squareToAlgebraic(m.from) + squareToAlgebraic(m.to);
+            if (m.flags & PROMOTION) {
+                switch(m.promotion) {
+                    case WQUEEN: case BQUEEN: s += "q"; break;
+                    case WROOK: case BROOK:   s += "r"; break;
+                    case WBISHOP: case BBISHOP: s += "b"; break;
+                    case WKNIGHT: case BKNIGHT: s += "n"; break;
+                }
+            }
+            outFile << " " << s;
+        }
+        outFile << "}";
+
+        outFile.close();
+    }
+}
+
+void ChessGUI::loadSavedGamesList() {
+    savedGames.clear();
+    
+    if (!fs::exists("local")) return;
+
+    for (const auto& entry : fs::directory_iterator("local")) {
+        if (entry.path().extension() == ".pgn") {
+            std::ifstream file(entry.path());
+            if (!file.is_open()) continue;
+
+            SavedGameEntry game;
+            game.filename = entry.path().string();
+            game.finalFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"; // Fallback
+
+            std::string line;
+            while (std::getline(file, line)) {
+                if (line.find("[White \"") != std::string::npos) {
+                    game.whiteName = line.substr(8, line.length() - 10);
+                } else if (line.find("[Black \"") != std::string::npos) {
+                    game.blackName = line.substr(8, line.length() - 10);
+                } else if (line.find("[Date \"") != std::string::npos) {
+                    game.date = line.substr(7, line.length() - 9);
+                } else if (line.find("[Result \"") != std::string::npos) {
+                    game.result = line.substr(9, line.length() - 11);
+                } else if (line.find("{FinalFEN: ") != std::string::npos) {
+                    size_t start = line.find("{FinalFEN: ") + 11;
+                    size_t end = line.find("}");
+                    if (end > start) {
+                        game.finalFen = line.substr(start, end - start);
+                    }
+                }
+            }
+            // Parse da FEN para gerar o board de cache
+            game.finalBoard = Board::fromFEN(game.finalFen.c_str());
+            
+            // Adiciona no início
+            savedGames.push_back(game);
+        }
+    }
+
+    // Ordena por nome decrescente
+    std::sort(savedGames.begin(), savedGames.end(), [](const SavedGameEntry& a, const SavedGameEntry& b) {
+        return a.filename > b.filename; 
+    });
+}
+
+void ChessGUI::drawMiniBoard(const Board& b, Rectangle r) {
+    // Fundo
+    DrawRectangleRec(r, BLACK);
+    
+    float sqSize = r.width / 8.0f;
+
+    // Casas
+    for(int i=0; i<64; i++) {
+        int col = i % 8;
+        int row = 7 - (i / 8); 
+        
+        Color c = ((col + row) % 2 != 0) ? LIGHT_SQUARE : DARK_SQUARE; 
+        
+        // Usar DrawRectangleRec para evitar gaps
+        DrawRectangleRec({ r.x + col*sqSize, r.y + row*sqSize, sqSize, sqSize }, c);
+        
+        Piece p = b.pieceAt(i);
+        if (p != EMPTY) {
+            Rectangle pieceRect = getPieceRect(p);
+            Rectangle destRect = { 
+                r.x + col*sqSize, 
+                r.y + row*sqSize, 
+                sqSize, 
+                sqSize 
+            };
+            DrawTexturePro(pieceTextures, pieceRect, destRect, {0,0}, 0, WHITE);
+        }
+    }
+    
+    // Borda fina
+    DrawRectangleLinesEx(r, 1, WHITE);
+}
+
+void ChessGUI::drawSavedGamesMenu() {
+    int sw = GetScreenWidth();
+    int sh = GetScreenHeight();
+
+    // Fundo
+    DrawRectangle(0, 0, sw, sh, BG_COLOR);
+    
+    DrawText("SAVED GAMES", 50, 30, 40, WHITE);
+
+    if (drawButton({(float)sw - 150, 30, 120, 40}, "BACK")) {
+        currentState = STATE_MENU_MAIN;
+    }
+
+    // Grid config
+    const int COLS = 2;
+    const int ROWS = 4;
+    const int ITEMS_PER_PAGE = COLS * ROWS;
+    
+    int totalPages = (savedGames.size() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
+    if (totalPages < 1) totalPages = 1;
+
+    // Paginação
+    int startIdx = savedGamesPage * ITEMS_PER_PAGE;
+    int endIdx = std::min((int)savedGames.size(), startIdx + ITEMS_PER_PAGE);
+
+    float cardW = (sw - 150) / 2.0f; 
+    float cardH = 140; 
+    float startX = 50;
+    float startY = 100;
+    float gapX = 50;
+    float gapY = 20;
+
+    for (int i = startIdx; i < endIdx; i++) {
+        int relIndex = i - startIdx;
+        int c = relIndex % COLS;
+        int r = relIndex / COLS;
+
+        Rectangle cardRect = {
+            startX + c * (cardW + gapX),
+            startY + r * (cardH + gapY),
+            cardW,
+            cardH
+        };
+
+        bool hover = CheckCollisionPointRec(GetMousePosition(), cardRect);
+        
+        // Se houver popup ativo, desativa interação visual de hover
+        if (activePopup != POPUP_NONE) hover = false;
+
+        // Fundo do Card
+        DrawRectangleRec(cardRect, hover ? BUTTON_HOVER : BUTTON_COLOR);
+        DrawRectangleLinesEx(cardRect, 1, BLACK);
+
+        // Mini Tabuleiro
+        float boardDim = cardH - 20; 
+        Rectangle miniBoardRect = { cardRect.x + 10, cardRect.y + 10, boardDim, boardDim };
+        drawMiniBoard(savedGames[i].finalBoard, miniBoardRect);
+
+        // Info
+        float textX = cardRect.x + boardDim + 25;
+        float textY = cardRect.y + 20;
+        
+        DrawText(TextFormat("%s vs %s", savedGames[i].whiteName.c_str(), savedGames[i].blackName.c_str()), 
+                 textX, textY, 22, WHITE); 
+        
+        DrawText(TextFormat("Result: %s", savedGames[i].result.c_str()), 
+                 textX, textY + 35, 18, LIGHTGRAY);
+                 
+        DrawText(savedGames[i].date.c_str(), textX, textY + 70, 16, GRAY);
+        
+        // Botão Delete (X)
+        Rectangle deleteBtn = { cardRect.x + cardW - 30, cardRect.y + 5, 25, 25 };
+        
+        // Bloqueia interação se tiver popup
+        if (activePopup == POPUP_NONE) {
+            bool hoverDelete = CheckCollisionPointRec(GetMousePosition(), deleteBtn);
+            
+            DrawText("x", deleteBtn.x + 8, deleteBtn.y - 2, 24, hoverDelete ? WHITE : GRAY);
+            
+            if (hoverDelete && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+                // Ação de Deletar com Confirmação
+                activePopup = POPUP_CONFIRM;
+                popupJustOpened = true;
+                popupMessage = "Delete this game?";
+                
+                std::string fileToDelete = savedGames[i].filename;
+                popupAction = [this, fileToDelete]() {
+                    if (fs::exists(fileToDelete)) {
+                        fs::remove(fileToDelete);
+                        this->loadSavedGamesList(); 
+                        
+                        int totalItems = this->savedGames.size();
+                        int itemsPerPage = 8; 
+                        int maxPage = (totalItems > 0) ? (totalItems - 1) / itemsPerPage : 0;
+                        if (this->savedGamesPage > maxPage) this->savedGamesPage = maxPage;
+                    }
+                };
+            }
+            else if (hover && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+                // Só carrega se não clicou no delete
+                loadGameFromFile(savedGames[i]);
+            }
+        } else {
+            // Desenha X desativado visualmente
+            DrawText("x", deleteBtn.x + 8, deleteBtn.y - 2, 24, Fade(GRAY, 0.5f));
+        }
+    }
+
+    // Controles de Página
+    char pageText[32];
+    sprintf(pageText, "Page %d / %d", savedGamesPage + 1, totalPages);
+    int ptw = MeasureText(pageText, 20);
+    DrawText(pageText, (sw - ptw)/2, sh - 50, 20, WHITE);
+
+    if (savedGamesPage > 0) {
+        if (drawButton({(float)sw/2 - 120, (float)sh - 60, 40, 40}, "<")) {
+            savedGamesPage--;
+        }
+    }
+    
+    if (savedGamesPage < totalPages - 1) {
+        if (drawButton({(float)sw/2 + 80, (float)sh - 60, 40, 40}, ">")) {
+            savedGamesPage++;
+        }
+    }
+}
+
+void ChessGUI::loadGameFromFile(const SavedGameEntry& entry) {
+    resetGame(); 
+    
+    isReplayMode = true;
+    
+    whitePlayer.name = entry.whiteName;
+    blackPlayer.name = entry.blackName;
+    
+    std::ifstream file(entry.filename);
+    if (!file.is_open()) return;
+
+    std::string rawMovesStr = "";
+    std::string line;
+    bool capturing = false;
+
+    while (std::getline(file, line)) {
+        size_t start = line.find("{RawMoves:");
+        if (start != std::string::npos) {
+            capturing = true;
+            std::string content = line.substr(start + 10);
+            size_t end = content.find("}");
+            if (end != std::string::npos) {
+                rawMovesStr += content.substr(0, end);
+                capturing = false; 
+                break;
+            } else {
+                rawMovesStr += content;
+            }
+        } else if (capturing) {
+            size_t end = line.find("}");
+            if (end != std::string::npos) {
+                rawMovesStr += line.substr(0, end);
+                break;
+            } else {
+                rawMovesStr += line;
+            }
+        }
+    }
+    file.close();
+
+    if (!rawMovesStr.empty()) {
+        std::stringstream ss(rawMovesStr);
+        std::string moveStr;
+        
+        while (ss >> moveStr) {
+            if (moveStr.length() < 4) continue;
+            
+            std::string fromStr = moveStr.substr(0, 2);
+            std::string toStr   = moveStr.substr(2, 2);
+            
+            int fCol = fromStr[0] - 'a';
+            int fRow = fromStr[1] - '1';
+            int tCol = toStr[0] - 'a';
+            int tRow = toStr[1] - '1';
+            
+            int fromSq = fRow * 8 + fCol;
+            int toSq   = tRow * 8 + tCol;
+            
+            Move moveToPlay = {};
+            bool found = false;
+            
+            for (const auto& m : legalMoves) {
+                if (m.from == fromSq && m.to == toSq) {
+                    if (moveStr.length() == 5) {
+                        char pChar = moveStr[4];
+                        Piece pPromo = EMPTY;
+                        bool w = board.whiteToMove;
+                        if (pChar == 'q') pPromo = w ? WQUEEN : BQUEEN;
+                        if (pChar == 'r') pPromo = w ? WROOK : BROOK;
+                        if (pChar == 'b') pPromo = w ? WBISHOP : BBISHOP;
+                        if (pChar == 'n') pPromo = w ? WKNIGHT : BKNIGHT;
+                        
+                        if (m.promotion != pPromo) continue;
+                    }
+                    
+                    moveToPlay = m;
+                    found = true;
+                    break;
+                }
+            }
+            
+            if (found) {
+                performMove(moveToPlay);
+            }
+        }
+    }
+    
+    animations.clear();
+    
+    // Começa do início no Replay
+    viewPly = 0;
+    
+    currentState = STATE_GAME;
 }

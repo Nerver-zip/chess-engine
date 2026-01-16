@@ -1,5 +1,6 @@
 misc.txt
 build/
 bin/
+local/
 .clangd
 pfp.png

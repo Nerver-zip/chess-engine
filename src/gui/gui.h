@@ -10,17 +10,31 @@
 #include <thread>
 #include <atomic>
 #include <unordered_map>
+#include <functional>
 
 enum AppState {
     STATE_MENU_MAIN,
     STATE_MENU_MODE,
     STATE_MENU_SIDE,
+    STATE_MENU_SAVED,
     STATE_GAME
 };
+
+enum PopupType { POPUP_NONE, POPUP_INFO, POPUP_CONFIRM };
 
 enum GameResult { RESULT_NONE, RESULT_WHITE_WINS, RESULT_BLACK_WINS, RESULT_DRAW };
 enum GameReason { REASON_NONE, REASON_CHECKMATE, REASON_STALEMATE, REASON_REPETITION, 
                   REASON_INSUFFICIENT_MATERIAL, REASON_50_MOVE_RULE, REASON_RESIGNATION };
+
+struct SavedGameEntry {
+    std::string filename;
+    std::string whiteName;
+    std::string blackName;
+    std::string date;
+    std::string result;
+    std::string finalFen; 
+    Board finalBoard; // Cache para desenhar a miniatura
+};
 
 // Estrutura para controlar a animação
 struct MovingPiece {
@@ -63,6 +77,16 @@ private:
     // Estado Atual
     AppState currentState = STATE_MENU_MAIN;
     bool shouldClose = false;
+
+    // Saved Games
+    std::vector<SavedGameEntry> savedGames;
+    int savedGamesPage = 0;
+    void loadSavedGamesList();
+    void drawSavedGamesMenu();
+    void drawMiniBoard(const Board& b, Rectangle r);
+    void saveGameToFile();
+    void loadGameFromFile(const SavedGameEntry& entry);
+    bool isReplayMode = false;
 
     // Core
     Board board;
@@ -169,4 +193,12 @@ private:
     
     // UI do Popup
     void drawGameOverPopup();
+    
+    // Generic Popup System
+    PopupType activePopup = POPUP_NONE;
+    std::string popupMessage;
+    std::function<void()> popupAction = nullptr; // Ação para "Yes" no confirm
+    bool drawingPopup = false; // Flag para permitir cliques apenas no popup
+    bool popupJustOpened = false; // Flag para evitar clique fantasma no frame de abertura
+    void drawGenericPopup();
 };
