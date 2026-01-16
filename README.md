@@ -48,7 +48,7 @@ sudo apt update
 sudo apt install build-essential git libraylib-dev libx11-dev libgl1-mesa-dev
 ```
 
-**Ubuntu / Debian:**
+**Arch Linux:**
 ```bash
 sudo pacman -S base-devel git raylib libx11 mesa
 ```
