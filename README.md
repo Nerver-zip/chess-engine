@@ -4,7 +4,7 @@
 ![Language](https://img.shields.io/badge/Language-C%2B%2B23-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-**Capy Chess Engine** is a chess engine and GUI built from scratch in **C++23**, designed to explore chess heuristics, search algorithms and bitboard-based state representation. It features a custom graphical interface powered by **Raylib**, providing a seamless experience for playing, analyzing, and managing chess games.
+**Capy Chess Engine** is a chess engine and GUI built in **C++23**, designed to explore chess heuristics, search algorithms and bitboard-based state representation. It features a custom graphical interface powered by **Raylib**, providing a seamless experience for playing, analyzing, and managing chess games.
 
 The project emphasizes code clarity and modern C++ practices making it an excellent resource for understanding chess programming fundamentals.
 
@@ -32,7 +32,7 @@ The project emphasizes code clarity and modern C++ practices making it an excell
 *   **Language:** C++23 (GCC 13+ or Clang 16+ recommended)
 *   **Graphics:** [Raylib 5.0](https://www.raylib.com/)
 *   **Build System:** GNU Make
-*   **Platform:** Linux (Tested on Ubuntu/Debian)
+*   **Platform:** Linux (Tested on Arch Linux)
 
 ---
 
@@ -80,7 +80,6 @@ The executable will be generated in `bin/chess_engine`.
     *   **Drag & Drop:** Move pieces with the mouse.
     *   **Arrow Keys:** Navigate through the move history.
     *   **'F' Key:** Flip the board view.
-    *   **ESC:** Return to the main menu.
 4.  **Saved Games:** Access your match history from the "SAVED GAMES" menu. You can replay matches or delete old ones.
 
 ---
