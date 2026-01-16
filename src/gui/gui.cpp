@@ -6,6 +6,7 @@
 #include "../tt/tt.h"
 #include <algorithm>
 #include <string>
+#include <sstream>
 
 const Color LIGHT_SQUARE = {235, 236, 208, 255};
 const Color DARK_SQUARE  = {119, 149, 86, 255};
@@ -104,8 +105,18 @@ void ChessGUI::resetGame() {
     history.clear();
     stateHistory.clear();
     flatMoveHistory.clear();
+    isGameOver = false;
+    showGameOverPopup = false;
+    gameResult = RESULT_NONE;
+    gameReason = REASON_NONE;
+    timerActive = false;
+    gameOverTimer = 0.0f;
+    fiftyMoveCounter = 0;
+    positionHistory.clear();
+    
 
     stateHistory.push_back(board);
+    positionHistory[generateFEN()]++;
     viewPly = 0;
     scrollOffset = 0;
     lastMove = {};
@@ -264,6 +275,14 @@ void ChessGUI::startEngineThink() {
 
 void ChessGUI::updateLogic() {
     calculateLayout(); 
+    
+    if (timerActive) {
+        gameOverTimer += GetFrameTime();
+        if (gameOverTimer > 1.0f) {
+            showGameOverPopup = true;
+            timerActive = false;
+        }
+    }
 
     // Navegação (Sempre disponível)
     if (IsKeyPressed(KEY_ESCAPE)) currentState = STATE_MENU_MAIN;
@@ -295,7 +314,7 @@ void ChessGUI::updateLogic() {
         }
     }
 
-    if (!isLive) return; 
+    if (!isLive || isGameOver) return; 
 
     // =========================================================
     // Daqui pra baixo, só executa se estiver jogando (Live)
@@ -418,6 +437,20 @@ void ChessGUI::setVisualPly(int targetPly) {
 // =========================================================
 
 void ChessGUI::performMove(Move m) {
+    
+    // Atualiza Regra 50 lances  
+    
+    Piece p = board.pieceAt(m.from);
+    
+    bool isPawn = (p == WPAWN || p == BPAWN);
+    bool isCapture = m.flags & CAPTURE || m.flags & EN_PASSANT;
+
+    if (isPawn || isCapture) {
+        fiftyMoveCounter = 0;
+    } else {
+        fiftyMoveCounter++;
+    }
+
     // Gera notação e Atualiza Histórico de Texto
     std::string san = moveToSAN(m, board);
 
@@ -434,7 +467,6 @@ void ChessGUI::performMove(Move m) {
     flatMoveHistory.push_back(m);
 
     // Configura Animação Visual
-    Piece p = board.pieceAt(m.from);
     if (m.flags & PROMOTION) p = (Piece)m.promotion;
 
     Vector2 startPos = getSquarePos(m.from);
@@ -477,8 +509,12 @@ void ChessGUI::performMove(Move m) {
     setVisualPly(stateHistory.size() - 1);
 
     lastMove = m;
-    
+     
     Debug::printBoard(board); 
+    
+    if (!isGameOver) {
+        checkGameOver();
+    }
 }
 
 // =========================================================
@@ -551,21 +587,67 @@ void ChessGUI::drawPanels() {
     if (rightPanelRect.width > 0) {
         DrawRectangleRec(rightPanelRect, Fade(BLACK, 0.4f));
 
-        // Área do Cabeçalho
+        // Cabeçalho
         float headerH = 40;
         DrawText("Moves", rightPanelRect.x + 10, rightPanelRect.y + 10, 20, WHITE);
         
-        // Área dos Botões de Controle (Rodapé)
-        float controlsH = 50;
-        float controlsY = rightPanelRect.y + rightPanelRect.height - controlsH;
-        drawControlButtons(rightPanelRect.x, controlsY, rightPanelRect.width);
+        // Área do Rodapé (Controles Navegação)
+        float navH = 50;
+        float navY = rightPanelRect.y + rightPanelRect.height - navH;
+        
+        // Área da Toolbar (Novos Botões: Resign, Copy, Flip)
+        float toolbarH = 40; 
+        float toolbarY = navY - toolbarH - 5; // 5px de padding acima da navegação
 
-        // Área da Lista (Scrollable)
+        // Desenha a Toolbar (4 botões em linha)
+        // Resign | Copy FEN | Copy PGN | Flip
+        const char* toolLabels[] = { "Resign", "Copy FEN", "Copy PGN", "Flip" };
+        float btnMargin = 5;
+        float btnW = (rightPanelRect.width - (btnMargin * 5)) / 4.0f; 
+        
+        for(int i=0; i<4; i++) {
+            Rectangle btnRect = { 
+                rightPanelRect.x + btnMargin + (i * (btnW + btnMargin)), 
+                toolbarY, 
+                btnW, 
+                30
+            };
+            
+            bool clicked = drawButton(btnRect, toolLabels[i]);
+            
+            // Lógica dos Botões
+            if (clicked) {
+                if (i == 0) { // RESIGN
+                    if (!isGameOver) {
+                        isGameOver = true;
+                        gameReason = REASON_RESIGNATION;
+                        if (userIsWhite) gameResult = RESULT_BLACK_WINS;
+                        else gameResult = RESULT_WHITE_WINS;
+                        
+                        showGameOverPopup = true;
+                    }
+                }
+                else if (i == 1) { // COPY FEN
+                    SetClipboardText(generateFEN(true).c_str());
+                }
+                else if (i == 2) { // COPY PGN
+                    SetClipboardText(generatePGN().c_str());
+                }
+                else if (i == 3) { // FLIP
+                    isFlipped = !isFlipped;
+                }
+            }
+        }
+
+        // Desenha Controles de Navegação (Original)
+        drawControlButtons(rightPanelRect.x, navY, rightPanelRect.width);
+
+        // Ajusta a Área da Lista (Scrollable) para terminar ANTES da toolbar
         Rectangle listRect = {
             rightPanelRect.x, 
             rightPanelRect.y + headerH, 
             rightPanelRect.width, 
-            rightPanelRect.height - headerH - controlsH
+            rightPanelRect.height - headerH - navH - toolbarH - 10
         };
         
         // Scissor Mode: Garante que o texto não vaze para fora da lista
@@ -781,13 +863,19 @@ bool ChessGUI::drawButton(Rectangle rect, const char* text) {
         clicked = true;
     }
 
-    // Desenha Fundo
-    DrawRectangleRec(rect, hovered ? BUTTON_HOVER : BUTTON_COLOR);
-    DrawRectangleLinesEx(rect, 2, BLACK); // Borda
+    // Cores Consistentes com o Tema Dark
+    Color normalColor = BUTTON_COLOR; 
+    Color hoverColor  = BUTTON_HOVER; 
 
-    // Desenha Texto Centralizado
-    int fontSize = 30;
+    // Desenha Fundo
+    DrawRectangleRec(rect, hovered ? hoverColor : normalColor);
+    DrawRectangleLinesEx(rect, 1, BLACK); // Borda fina preta
+
+    // Tamanho da fonte dinâmico (Max 30, mas diminui se o botão for pequeno)
+    int fontSize = std::min(30, (int)(rect.height * 0.5f));
     int textW = MeasureText(text, fontSize);
+    
+    // Centraliza
     DrawText(text, 
              rect.x + (rect.width - textW) / 2, 
              rect.y + (rect.height - fontSize) / 2, 
@@ -863,6 +951,102 @@ void ChessGUI::drawMenu() {
     }
 }
 
+void ChessGUI::drawGameOverPopup() {
+    if (!showGameOverPopup) return;
+
+    int sw = GetScreenWidth();
+    int sh = GetScreenHeight();
+
+    // 1. Overlay Escuro (Fundo do jogo fica mais escuro)
+    DrawRectangle(0, 0, sw, sh, Fade(BLACK, 0.7f));
+
+    // 2. Configuração da Janela
+    float w = 420; // Um pouco mais largo para caber os botões
+    float h = 220;
+    Rectangle rect = { (sw - w)/2, (sh - h)/2, w, h };
+
+    // Fundo da Janela (Cinza Escuro estilo painéis)
+    // Usando uma cor sólida levemente mais clara que o BG_COLOR
+    Color popupBg = { 55, 53, 50, 255 }; 
+    DrawRectangleRec(rect, popupBg);
+    
+    // Borda Sutil
+    DrawRectangleLinesEx(rect, 1, { 80, 80, 80, 255 }); 
+
+    // 3. Título (Game Over / Resultado)
+    const char* titleText = "GAME OVER";
+    Color titleColor = WHITE;
+
+    if (gameResult == RESULT_WHITE_WINS) { 
+        titleText = "WHITE WINS"; 
+        titleColor = { 155, 235, 155, 255 }; // Verde pastel
+    }
+    else if (gameResult == RESULT_BLACK_WINS) { 
+        titleText = "BLACK WINS"; 
+        titleColor = { 155, 155, 235, 255 }; // Azul pastel
+    }
+    else if (gameResult == RESULT_DRAW) { 
+        titleText = "DRAW"; 
+        titleColor = { 200, 200, 200, 255 }; // Cinza claro
+    }
+
+    int titleW = MeasureText(titleText, 40);
+    DrawText(titleText, rect.x + (w - titleW)/2, rect.y + 30, 40, titleColor);
+
+    // 4. Subtítulo (Motivo)
+    const char* reasonText = "";
+    switch(gameReason) {
+        case REASON_CHECKMATE: reasonText = "by Checkmate"; break;
+        case REASON_STALEMATE: reasonText = "by Stalemate"; break;
+        case REASON_REPETITION: reasonText = "by Repetition"; break;
+        case REASON_RESIGNATION: reasonText = "by Resignation"; break;
+        case REASON_INSUFFICIENT_MATERIAL: reasonText = "Insufficient Material"; break;
+        case REASON_50_MOVE_RULE: reasonText = "50-move rule"; break;
+        default: break;
+    }
+
+    int reasonW = MeasureText(reasonText, 20);
+    DrawText(reasonText, rect.x + (w - reasonW)/2, rect.y + 80, 20, LIGHTGRAY);
+
+    // 5. Botões
+    // Layout: [Rematch] [ Save ] [ Menu ]
+    // Espaçamento calculado
+    float padding = 20;
+    float btnSpacing = 15;
+    float totalBtnWidth = w - (padding * 2); 
+    float btnW = (totalBtnWidth - (btnSpacing * 2)) / 3; // Divide igualmente por 3
+    float btnH = 45;
+    float btnY = rect.y + 140;
+
+    // Botão 1: Rematch
+    if (drawButton({rect.x + padding, btnY, btnW, btnH}, "Rematch")) {
+        resetGame();
+    }
+
+    // Botão 2: Save
+    if (drawButton({rect.x + padding + btnW + btnSpacing, btnY, btnW, btnH}, "Save")) {
+        // Copiar FEN para clipboard como "Save" temporário
+        SetClipboardText(generateFEN().c_str());
+    }
+    
+    // Botão 3: Menu
+    if (drawButton({rect.x + padding + (btnW + btnSpacing)*2, btnY, btnW, btnH}, "Menu")) {
+        currentState = STATE_MENU_MAIN;
+        resetGame();
+    }
+
+    // 6. Botão de Fechar (X)
+    // Um X pequeno e discreto no canto
+    Rectangle closeBtn = { rect.x + w - 30, rect.y + 5, 25, 25 };
+    bool hoverClose = CheckCollisionPointRec(GetMousePosition(), closeBtn);
+    
+    DrawText("x", closeBtn.x + 8, closeBtn.y - 2, 24, hoverClose ? WHITE : GRAY);
+    
+    if (hoverClose && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+        showGameOverPopup = false; 
+    }
+}
+
 void ChessGUI::draw() {
     BeginDrawing();
     ClearBackground(BG_COLOR);
@@ -884,9 +1068,228 @@ void ChessGUI::draw() {
         DrawTexturePro(pieceTextures, getPieceRect(p), dest, {0,0}, 0.0f, WHITE);
     }
 
-    if (currentState != STATE_GAME) {
+    if (showGameOverPopup) {
+        drawGameOverPopup();
+    }
+
+    if (currentState != STATE_GAME && !showGameOverPopup) {
         drawMenu();
     }
 
     EndDrawing();
+}
+
+std::string squareToAlgebraic(int sq) {
+    if (sq < 0 || sq > 63) return "-";
+    char f = 'a' + (sq % 8);
+    return std::string{f, (char)('1' + (sq/8))}; 
+}
+
+std::string ChessGUI::generateFEN(bool full) {
+    std::string fen = "";
+    int empty = 0;
+
+    // 1. Tabuleiro (Rank 8 até 1)
+    for (int r = 7; r >= 0; r--) {
+        for (int f = 0; f < 8; f++) {
+            int sq = r * 8 + f; 
+            Piece p = board.pieceAt(sq);
+
+            if (p == EMPTY) {
+                empty++;
+            } else {
+                if (empty > 0) {
+                    fen += std::to_string(empty);
+                    empty = 0;
+                }
+                char c = '?';
+                switch(p) {
+                    case WPAWN:   c='P'; break; case WKNIGHT: c='N'; break;
+                    case WBISHOP: c='B'; break; case WROOK:   c='R'; break;
+                    case WQUEEN:  c='Q'; break; case WKING:   c='K'; break;
+                    case BPAWN:   c='p'; break; case BKNIGHT: c='n'; break;
+                    case BBISHOP: c='b'; break; case BROOK:   c='r'; break;
+                    case BQUEEN:  c='q'; break; case BKING:   c='k'; break;
+                    case EMPTY: break;
+                }
+                fen += c;
+            }
+        }
+        if (empty > 0) { fen += std::to_string(empty); empty = 0; }
+        if (r > 0) fen += "/";
+    }
+
+    // 2. Vez
+    fen += (board.whiteToMove ? " w " : " b ");
+
+    // 3. Roque
+    std::string castling = "";
+    if (board.castlingRights & 1) castling += "K";
+    if (board.castlingRights & 2) castling += "Q";
+    if (board.castlingRights & 4) castling += "k";
+    if (board.castlingRights & 8) castling += "q";
+    if (castling == "") castling = "-";
+    fen += castling;
+
+    // 4. En Passant
+    fen += " ";
+    if (board.enPassantSquare != -1) {
+        fen += squareToAlgebraic(board.enPassantSquare);
+    } else {
+        fen += "-";
+    }
+
+    // --- PONTO DE CORTE ---
+    // Se full=false, paramos aqui. Isso gera a chave perfeita para repetição.
+    if (!full) return fen;
+
+    // 5. Contadores (Só para Save/Copy)
+    // Halfmove (50 regras)
+    fen += " " + std::to_string(fiftyMoveCounter);
+    
+    // Fullmove (Número da jogada)
+    int fullMove = 1 + (flatMoveHistory.size() / 2);
+    fen += " " + std::to_string(fullMove);
+
+    return fen;
+}
+
+
+std::string ChessGUI::generatePGN() {
+    std::stringstream ss;
+
+    // ======================
+    // 1. Cabeçalhos (Tags)
+    // ======================
+    time_t now = time(0);
+    struct tm tstruct = *localtime(&now);
+    char buf[80];
+    strftime(buf, sizeof(buf), "%Y.%m.%d", &tstruct);
+
+    ss << "[Event \"Capy Chess Game\"]\n";
+    ss << "[Site \"Local\"]\n";
+    ss << "[Date \"" << buf << "\"]\n";
+    ss << "[Round \"1\"]\n";
+    ss << "[White \"" << whitePlayer.name << "\"]\n";
+    ss << "[Black \"" << blackPlayer.name << "\"]\n";
+
+    std::string fen = generateFEN(true);
+    
+    if(isFischerRandom){
+        ss << "[SetUp \"1\"]\n";
+        ss << "[FEN \"" << fen << "\"]\n";
+    }
+
+    // ======================
+    // Resultado
+    // ======================
+    std::string result = "*";
+    if (gameResult == RESULT_WHITE_WINS) result = "1-0";
+    else if (gameResult == RESULT_BLACK_WINS) result = "0-1";
+    else if (gameResult == RESULT_DRAW) result = "1/2-1/2";
+
+    ss << "[Result \"" << result << "\"]\n\n";
+
+    // ======================
+    // 2. Movimentos
+    // ======================
+    for (const auto& entry : history) {
+        ss << entry.moveNumber << ". " << entry.whiteMove << " ";
+        if (!entry.blackMove.empty()) {
+            ss << entry.blackMove << " ";
+        }
+    }
+
+    // Resultado no final do PGN
+    ss << result;
+
+    return ss.str();
+}
+
+bool ChessGUI::checkInsufficientMaterial() {
+    // Contagem de peças
+    int wPawn=0, wKnight=0, wBishop=0, wRook=0, wQueen=0;
+    int bPawn=0, bKnight=0, bBishop=0, bRook=0, bQueen=0;
+
+    // Varre o tabuleiro (ou use os bitboards popcount se tiver acesso)
+    // Usando loop simples para compatibilidade com o código atual
+    for(int i=0; i<64; i++) {
+        Piece p = board.pieceAt(i);
+        if (p == WPAWN) wPawn++; else if (p == WKNIGHT) wKnight++;
+        else if (p == WBISHOP) wBishop++; else if (p == WROOK) wRook++;
+        else if (p == WQUEEN) wQueen++;
+        else if (p == BPAWN) bPawn++; else if (p == BKNIGHT) bKnight++;
+        else if (p == BBISHOP) bBishop++; else if (p == BROOK) bRook++;
+        else if (p == BQUEEN) bQueen++;
+    }
+
+    // 1. Se tem Peões, Torres ou Damas -> Tem material suficiente
+    if (wPawn+wRook+wQueen+bPawn+bRook+bQueen > 0) return false;
+
+    // O que sobrou: Reis + Cavalos + Bispos
+    int wMinor = wKnight + wBishop;
+    int bMinor = bKnight + bBishop;
+
+    // Rei vs Rei
+    if (wMinor == 0 && bMinor == 0) return true;
+
+    // Rei + Menor vs Rei (Impossível mate forçado)
+    if ((wMinor == 1 && bMinor == 0) || (wMinor == 0 && bMinor == 1)) return true;
+
+    // Rei + 2 Cavalos vs Rei (Impossível mate forçado sem ajuda do oponente)
+    // Nota: K+NN vs K+P NÃO é empate. Mas aqui já filtramos peões.
+    if ((wKnight == 2 && wBishop == 0 && bMinor == 0) || 
+        (bKnight == 2 && bBishop == 0 && wMinor == 0)) return true;
+        
+    // Bispos de cores opostas? (K+B vs K+B) -> Geralmente empate, mas engines jogam.
+    // Vamos ficar no básico pedido.
+
+    return false;
+}
+
+void ChessGUI::checkGameOver() {
+    if (checkInsufficientMaterial()) {
+        isGameOver = true;
+        gameResult = RESULT_DRAW;
+        gameReason = REASON_INSUFFICIENT_MATERIAL;
+        timerActive = true;
+        return;
+    }
+
+    std::string currentFen = generateFEN();
+    positionHistory[currentFen]++;
+    
+    if (positionHistory[currentFen] >= 3) {
+        isGameOver = true;
+        gameResult = RESULT_DRAW;
+        gameReason = REASON_REPETITION;
+        timerActive = true;
+        return;
+    }
+
+    // Checa Mate ou Stalemate
+    // Se não há movimentos legais disponíveis
+    if (legalMoves.empty()) {
+        isGameOver = true;
+        timerActive = true;
+
+        bool inCheck = board.whiteToMove ? (board.whiteKing & board.blackAttacks) 
+                                     : (board.blackKing & board.whiteAttacks);
+
+        if (inCheck) {
+            gameReason = REASON_CHECKMATE;
+            gameResult = board.whiteToMove ? RESULT_BLACK_WINS : RESULT_WHITE_WINS;
+        } else {
+            gameReason = REASON_STALEMATE;
+            gameResult = RESULT_DRAW;
+        }
+    }
+
+    if (fiftyMoveCounter >= 100) {
+        isGameOver = true;
+        gameResult = RESULT_DRAW;
+        gameReason = REASON_50_MOVE_RULE;
+        timerActive = true;
+        return;
+    }
 }

@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 #include <atomic>
+#include <unordered_map>
 
 enum AppState {
     STATE_MENU_MAIN,
@@ -16,6 +17,10 @@ enum AppState {
     STATE_MENU_SIDE,
     STATE_GAME
 };
+
+enum GameResult { RESULT_NONE, RESULT_WHITE_WINS, RESULT_BLACK_WINS, RESULT_DRAW };
+enum GameReason { REASON_NONE, REASON_CHECKMATE, REASON_STALEMATE, REASON_REPETITION, 
+                  REASON_INSUFFICIENT_MATERIAL, REASON_50_MOVE_RULE, REASON_RESIGNATION };
 
 // Estrutura para controlar a animação
 struct MovingPiece {
@@ -142,4 +147,26 @@ private:
 
     // Helper de UI para desenhar ícones de controle
     void drawControlButtons(float x, float y, float w);
+
+    // ---- FIM DE JOGO E REGRAS ----
+    bool isGameOver = false;
+    bool showGameOverPopup = false;
+    GameResult gameResult = RESULT_NONE;
+    GameReason gameReason = REASON_NONE;
+    int fiftyMoveCounter = 0;
+    
+    float gameOverTimer = 0.0f; // Delay para não tomar jumpscare no mate xd
+    bool timerActive = false;
+
+    // Para contagem de threefold repetition (FEN -> Count)
+    std::unordered_map<std::string, char> positionHistory;
+
+    std::string generateFEN(bool full = false);
+    std::string generatePGN();
+    bool checkInsufficientMaterial();
+    bool isFischerRandom = false;
+    void checkGameOver();
+    
+    // UI do Popup
+    void drawGameOverPopup();
 };
