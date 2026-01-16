@@ -24,23 +24,30 @@ std::string moveToUCI(const Move& m) {
 }
 
 std::string moveToSAN(const Move& move, const Board& boardState) {
-    std::stringstream ss;
-    
-    if (move.flags & KING_CASTLE) return "O-O";
+    std::string san;
+    san.reserve(8);
+
+    // Castling
+    if (move.flags & KING_CASTLE)  return "O-O";
     if (move.flags & QUEEN_CASTLE) return "O-O-O";
 
     Piece p = boardState.pieceAt(move.from);
-    
-    char pieceChar = ' ';
     bool isPawn = (p == WPAWN || p == BPAWN);
-    
-    if (p == WKING || p == BKING) pieceChar = 'K';
-    else if (p == WQUEEN || p == BQUEEN) pieceChar = 'Q';
-    else if (p == WROOK || p == BROOK) pieceChar = 'R';
+
+    // Letra da peça
+    char pieceChar = 0;
+    if (p == WKING || p == BKING)       pieceChar = 'K';
+    else if (p == WQUEEN || p == BQUEEN)pieceChar = 'Q';
+    else if (p == WROOK || p == BROOK)  pieceChar = 'R';
     else if (p == WBISHOP || p == BBISHOP) pieceChar = 'B';
     else if (p == WKNIGHT || p == BKNIGHT) pieceChar = 'N';
 
-    // Desambiguação caso duas peças do mesmo tipo possam ir para a mesma casa
+    if (!isPawn)
+        san.push_back(pieceChar);
+
+    // -----------------------------
+    // Desambiguação (exceto rei)
+    // -----------------------------
     if (!isPawn && pieceChar != 'K') {
         bool ambiguityFile = false;
         bool ambiguityRank = false;
@@ -50,70 +57,85 @@ std::string moveToSAN(const Move& move, const Board& boardState) {
 
         for (const auto& otherM : moves) {
             if (otherM.from != move.from && otherM.to == move.to) {
-                Piece otherP = boardState.pieceAt(otherM.from);
-                if (otherP == p) {
+                if (boardState.pieceAt(otherM.from) == p) {
                     needsDisambiguation = true;
-                    if ((move.from % 8) == (otherM.from % 8)) ambiguityFile = true;
-                    else ambiguityRank = true;
+
+                    if ((move.from % 8) == (otherM.from % 8))
+                        ambiguityFile = true;
+                    else
+                        ambiguityRank = true;
                 }
             }
         }
 
         if (needsDisambiguation) {
-            char files[] = "abcdefgh";
-            char ranks[] = "12345678";
-            
-            if (ambiguityFile) {
-                if (ambiguityRank) ss << files[move.from % 8];
-                ss << ranks[move.from / 8];
-            } else {
-                ss << files[move.from % 8];
+            static constexpr char files[] = "abcdefgh";
+            static constexpr char ranks[] = "12345678";
+
+            if (!ambiguityFile)
+                san.push_back(files[move.from % 8]);
+            else if (!ambiguityRank)
+                san.push_back(ranks[move.from / 8]);
+            else {
+                san.push_back(files[move.from % 8]);
+                san.push_back(ranks[move.from / 8]);
             }
         }
     }
 
-    if (!isPawn) ss << pieceChar;
+    // -----------------------------
+    // Captura
+    // -----------------------------
+    bool isCapture =
+        (boardState.pieceAt(move.to) != EMPTY) ||
+        (move.flags & EN_PASSANT);
 
-    // Na captura se for peão usar a file, adicionar 'x'
-    bool isCapture = (boardState.pieceAt(move.to) != EMPTY) || (move.flags & EN_PASSANT);
     if (isCapture) {
-        if (isPawn) {
-            char files[] = "abcdefgh";
-            ss << files[move.from % 8];
-        }
-        ss << "x";
+        if (isPawn)
+            san.push_back("abcdefgh"[move.from % 8]);
+        san.push_back('x');
     }
 
-    // Destino
-    char files[] = "abcdefgh";
-    char ranks[] = "12345678";
-    ss << files[move.to % 8] << ranks[move.to / 8];
+    // -----------------------------
+    // Casa de destino
+    // -----------------------------
+    san.push_back("abcdefgh"[move.to % 8]);
+    san.push_back("12345678"[move.to / 8]);
 
-    // Promoção, concatenar =PEÇA 
+    // -----------------------------
+    // Promoção
+    // -----------------------------
     if (move.flags & PROMOTION) {
-        ss << "=";
+        san.push_back('=');
         switch (move.promotion) {
-            case WQUEEN: case BQUEEN: ss << "Q"; break;
-            case WROOK: case BROOK: ss << "R"; break;
-            case WBISHOP: case BBISHOP: ss << "B"; break;
-            case WKNIGHT: case BKNIGHT: ss << "N"; break;
+            case WQUEEN:
+            case BQUEEN:  san.push_back('Q'); break;
+            case WROOK:
+            case BROOK:   san.push_back('R'); break;
+            case WBISHOP:
+            case BBISHOP: san.push_back('B'); break;
+            case WKNIGHT:
+            case BKNIGHT: san.push_back('N'); break;
         }
     }
 
-    // Xeque (+) ou Mate (#)
+    // -----------------------------
+    // Xeque ou mate
+    // -----------------------------
     Board nextBoard = boardState.applyMove(move);
     nextBoard.updateAttackBoards();
-    
-    // Detecta se o Rei oponente está em cheque
+
     bool enemyWhite = !boardState.whiteToMove;
     uint64_t kingBB = enemyWhite ? nextBoard.whiteKing : nextBoard.blackKing;
-    bool inCheck = enemyWhite ? (nextBoard.blackAttacks & kingBB) : (nextBoard.whiteAttacks & kingBB);
+
+    bool inCheck = enemyWhite
+        ? (nextBoard.blackAttacks & kingBB)
+        : (nextBoard.whiteAttacks & kingBB);
 
     if (inCheck) {
         std::vector<Move> responses = MoveGen::generateCheckResponses(nextBoard);
-        if (responses.empty()) ss << "#";
-        else ss << "+";
+        san.push_back(responses.empty() ? '#' : '+');
     }
 
-    return ss.str();
+    return san;
 }

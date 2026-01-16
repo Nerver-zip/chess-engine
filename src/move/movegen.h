@@ -12,7 +12,7 @@ public:
     // Para busca genérica
     static std::vector<Move> generateMoves(const Board& board);
     
-    // Para desambiguação na notação clássica
+    // Somente movimento para uma peça, usado na desambiguação da notação clássica
     static std::vector<Move> generatePieceMoves(const Board& board, Piece piece);
 
     // Para Q-search
