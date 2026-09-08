@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release-linux:
+    name: Release Linux
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc
+      CXX: g++
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ runner.os }}-gcc-release-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-gcc-release-
+            ccache-${{ runner.os }}-gcc-
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache ninja-build libx11-dev libgl1-mesa-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+      - name: Configure release
+        run: >-
+          cmake --preset release
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: Build and test
+        run: |
+          cmake --build --preset release --parallel 2
+          ctest --preset release --output-on-failure
+      - name: Show ccache statistics
+        run: ccache --show-stats
+      - name: Package with CPack
+        run: |
+          mkdir -p build/packages
+          cpack --config build/release/CPackConfig.cmake -B build/packages -G TGZ
+          cpack --config build/release/CPackConfig.cmake -B build/packages -G ZIP
+      - name: Publish GitHub release
+        run: |
+          RELEASE_TAG="${GITHUB_REF_NAME}"
+          if [[ ! "$RELEASE_TAG" =~ ^v ]]; then
+            RELEASE_TAG="v0.1.0"
+          fi
+          gh release create "$RELEASE_TAG" build/packages/*.tar.gz build/packages/*.zip --generate-notes || \
+          gh release upload "$RELEASE_TAG" build/packages/*.tar.gz build/packages/*.zip --clobber

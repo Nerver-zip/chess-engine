@@ -4,3 +4,5 @@ bin/
 local/
 .clangd
 pfp.png
+compile_commands.json
+.ccache/

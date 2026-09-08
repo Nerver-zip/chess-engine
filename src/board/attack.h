@@ -433,7 +433,8 @@ constexpr uint64_t squaresBetween(int a, int b)
     else if (df == -dr) step = (dr > 0 ? 7 : -7);
     else return 0;
 
-    int dist = std::max(std::abs(df), std::abs(dr));
+    constexpr auto absVal = [](int v) { return v < 0 ? -v : v; };
+    int dist = std::max(absVal(df), absVal(dr));
 
     uint64_t mask = 0;
     int s = a;

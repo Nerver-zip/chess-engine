@@ -1,0 +1,56 @@
+name: clang-tidy
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clang-tidy
+  cancel-in-progress: true
+
+jobs:
+  clang-tidy:
+    name: clang-tidy analysis
+    runs-on: ubuntu-24.04
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ runner.os }}-clang-tidy-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-clang-tidy-
+            ccache-${{ runner.os }}-
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache ninja-build clang-tidy libx11-dev libgl1-mesa-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+      - name: Configure
+        env:
+          CC: clang
+          CXX: clang++
+        run: >-
+          cmake -S . -B build/tidy -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DBUILD_TESTING=ON
+      - name: Build compilation database
+        run: cmake --build build/tidy --parallel 2
+      - name: Analyze translation units
+        shell: bash
+        run: |
+          mapfile -t files < <(find tests -type f -name '*.cpp' -print | sort)
+          if ((${#files[@]} > 0)); then
+            clang-tidy -p build/tidy "${files[@]}"
+          fi
+      - name: Show ccache statistics
+        run: ccache --show-stats

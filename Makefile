@@ -41,7 +41,7 @@ endif
 # Regras
 # ==========================================
 
-.PHONY: all clean run directories debug-tool
+.PHONY: all clean run directories debug-tool test
 
 all: directories $(if $(NO_ENGINE),,$(TARGET))
 
@@ -67,6 +67,12 @@ $(BUILD_DIR)/%.o: %.cpp
 clean:
 	@echo "Cleaning up..."
 	@rm -rf build bin
+
+# ---------- Test ----------
+test:
+	@cmake --preset dev
+	@cmake --build --preset dev
+	@ctest --preset dev --output-on-failure
 
 # ==========================================
 # MAKERUN

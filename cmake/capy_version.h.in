@@ -1,0 +1,17 @@
+#pragma once
+#include <string_view>
+
+namespace Capy {
+constexpr std::string_view version() noexcept {
+    return "@CAPY_VERSION@";
+}
+constexpr int versionMajor() noexcept {
+    return @PROJECT_VERSION_MAJOR@;
+}
+constexpr int versionMinor() noexcept {
+    return @PROJECT_VERSION_MINOR@;
+}
+constexpr int versionPatch() noexcept {
+    return @PROJECT_VERSION_PATCH@;
+}
+} // namespace Capy
